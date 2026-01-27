@@ -456,6 +456,135 @@ describe('http module', () => {
   });
 });
 
+import { ClientRequest, request, get } from '../src/shims/http';
+import * as https from '../src/shims/https';
+
+describe('HTTP Client', () => {
+
+  describe('ClientRequest', () => {
+    it('should create client request with options', () => {
+      const req = new ClientRequest({
+        method: 'POST',
+        hostname: 'api.example.com',
+        path: '/users',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      expect(req.method).toBe('POST');
+      expect(req.path).toBe('/users');
+      expect(req.getHeader('content-type')).toBe('application/json');
+    });
+
+    it('should set and get headers', () => {
+      const req = new ClientRequest({ method: 'GET', path: '/' });
+
+      req.setHeader('X-Custom', 'value');
+      expect(req.getHeader('x-custom')).toBe('value');
+
+      req.removeHeader('x-custom');
+      expect(req.getHeader('x-custom')).toBeUndefined();
+    });
+
+    it('should buffer body chunks', () => {
+      const req = new ClientRequest({ method: 'POST', path: '/' });
+
+      req.write('Hello ');
+      req.write('World');
+
+      // Access private field for testing
+      expect((req as any)._bodyChunks.length).toBe(2);
+    });
+
+    it('should support abort', () => {
+      const req = new ClientRequest({ method: 'GET', path: '/' });
+      let aborted = false;
+
+      req.on('abort', () => { aborted = true; });
+      req.abort();
+
+      expect(aborted).toBe(true);
+      expect((req as any)._aborted).toBe(true);
+    });
+
+    it('should support setTimeout', () => {
+      const req = new ClientRequest({ method: 'GET', path: '/' });
+      let timeoutCalled = false;
+
+      req.setTimeout(1000, () => { timeoutCalled = true; });
+
+      expect((req as any)._timeout).toBe(1000);
+    });
+  });
+
+  describe('request function', () => {
+    it('should create ClientRequest with options object', () => {
+      const req = request({
+        hostname: 'example.com',
+        path: '/api',
+        method: 'POST'
+      });
+
+      expect(req).toBeInstanceOf(ClientRequest);
+      expect(req.method).toBe('POST');
+    });
+
+    it('should create ClientRequest from URL string', () => {
+      const req = request('http://example.com/path?query=1');
+
+      expect(req).toBeInstanceOf(ClientRequest);
+      expect(req.path).toBe('/path?query=1');
+    });
+
+    it('should create ClientRequest from URL object', () => {
+      const url = new URL('http://example.com:8080/api');
+      const req = request(url);
+
+      expect(req).toBeInstanceOf(ClientRequest);
+      expect(req.path).toBe('/api');
+    });
+
+    it('should attach response callback', () => {
+      let callbackAttached = false;
+      const req = request('http://example.com', () => {
+        callbackAttached = true;
+      });
+
+      expect(req.listenerCount('response')).toBe(1);
+    });
+  });
+
+  describe('get function', () => {
+    it('should create GET request', () => {
+      const req = get({ hostname: 'example.com', path: '/' });
+
+      expect(req.method).toBe('GET');
+    });
+
+    it('should auto-call end()', () => {
+      const req = get({ hostname: 'example.com', path: '/' });
+
+      expect((req as any)._ended).toBe(true);
+    });
+  });
+
+  describe('https module', () => {
+    it('should export request function', () => {
+      expect(typeof https.request).toBe('function');
+    });
+
+    it('should export get function', () => {
+      expect(typeof https.get).toBe('function');
+    });
+
+    it('should create https requests with correct protocol', () => {
+      const req = https.request('https://secure.example.com/api');
+
+      expect(req).toBeInstanceOf(ClientRequest);
+      expect((req as any)._protocol).toBe('https');
+    });
+  });
+});
+
 describe('EventEmitter', () => {
   it('should emit and listen to events', () => {
     const emitter = new EventEmitter();

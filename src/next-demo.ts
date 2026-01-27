@@ -353,7 +353,9 @@ export default function ApiDemo() {
   const callApi = async (endpoint) => {
     setLoading(true);
     try {
-      const response = await fetch(endpoint);
+      // Use relative path (remove leading slash) so it resolves relative to current page
+      const relativePath = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+      const response = await fetch(relativePath);
       const data = await response.json();
       setResult({ endpoint, data, status: response.status });
     } catch (error) {
@@ -402,10 +404,28 @@ export default function ApiDemo() {
         </div>
 
         <div className="card">
+          <h3>Node.js https Module Demo</h3>
+          <p style={{ marginBottom: '1rem' }}>
+            This endpoint uses Node.js <code>https.get()</code> to fetch data server-side.
+            Requires CORS proxy to be configured.
+          </p>
+
+          <div className="counter-buttons">
+            <button onClick={() => callApi('/api/github-proxy?username=octocat')} disabled={loading}>
+              GET /api/github-proxy (Node.js https)
+            </button>
+          </div>
+        </div>
+
+        <div className="card">
           <h3>About API Routes</h3>
           <p>
             API routes are defined in <code>/pages/api/</code> directory.
             Each file exports a handler function that receives request and response objects.
+          </p>
+          <p style={{ marginTop: '0.5rem', color: '#666' }}>
+            The github-proxy endpoint demonstrates using Node.js <code>https</code> module
+            to make outbound HTTP requests, similar to how it works in real Node.js.
           </p>
         </div>
       </div>
@@ -587,6 +607,62 @@ proxyFetch('https://api.github.com/users/octocat')\`}
     local: now.toLocaleString(),
     unix: Math.floor(now.getTime() / 1000),
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+}
+`
+  );
+
+  // Create API route that demonstrates Node.js https module
+  vfs.writeFileSync(
+    '/pages/api/github-proxy.js',
+    `// This API route uses Node.js https module to make server-side requests
+import https from 'https';
+
+export default function handler(req, res) {
+  const username = req.query.username || 'octocat';
+
+  // Use Node.js https.get() to fetch from GitHub API
+  https.get(\`https://api.github.com/users/\${username}\`, {
+    headers: {
+      'User-Agent': 'Node.js-Browser-Runtime',
+      'Accept': 'application/json'
+    }
+  }, (response) => {
+    let data = '';
+
+    response.on('data', (chunk) => {
+      data += chunk;
+    });
+
+    response.on('end', () => {
+      try {
+        const user = JSON.parse(data);
+        res.status(200).json({
+          success: true,
+          message: 'Fetched using Node.js https module!',
+          user: {
+            login: user.login,
+            name: user.name,
+            bio: user.bio,
+            avatar_url: user.avatar_url,
+            followers: user.followers,
+            public_repos: user.public_repos,
+          }
+        });
+      } catch (error) {
+        res.status(500).json({
+          success: false,
+          error: 'Failed to parse response',
+          raw: data.substring(0, 200)
+        });
+      }
+    });
+  }).on('error', (error) => {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      hint: 'Make sure CORS proxy is configured for https.get() to work'
+    });
   });
 }
 `

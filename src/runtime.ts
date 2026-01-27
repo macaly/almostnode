@@ -10,6 +10,7 @@ import { createFsShim, FsShim } from './shims/fs';
 import * as pathShim from './shims/path';
 import { createProcess, Process } from './shims/process';
 import * as httpShim from './shims/http';
+import * as httpsShim from './shims/https';
 import * as netShim from './shims/net';
 import eventsShim from './shims/events';
 import * as streamShim from './shims/stream';
@@ -144,7 +145,7 @@ function createTimersModule() {
 const builtinModules: Record<string, unknown> = {
   path: pathShim,
   http: httpShim,
-  https: httpShim, // Use http shim for https
+  https: httpsShim, // Separate https shim with https protocol default
   net: netShim,
   events: eventsShim,
   stream: streamShim,

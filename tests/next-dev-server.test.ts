@@ -215,6 +215,43 @@ export default function BlogIndex() {
       const response = await server.handleRequest('GET', '/api/users', {});
       expect(response.statusCode).toBe(200);
     });
+
+    it('should execute API handler with https import', async () => {
+      // Create an API route that imports https module
+      vfs.writeFileSync(
+        '/pages/api/https-test.js',
+        `import https from 'https';
+
+export default function handler(req, res) {
+  // Just verify we can import https and it has expected methods
+  const hasGet = typeof https.get === 'function';
+  const hasRequest = typeof https.request === 'function';
+
+  res.status(200).json({
+    httpsAvailable: true,
+    hasGet,
+    hasRequest
+  });
+}
+`
+      );
+
+      const response = await server.handleRequest('GET', '/api/https-test', {});
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body.toString());
+      expect(body.httpsAvailable).toBe(true);
+      expect(body.hasGet).toBe(true);
+      expect(body.hasRequest).toBe(true);
+    });
+
+    it('should execute API handler that returns data from handler', async () => {
+      const response = await server.handleRequest('GET', '/api/hello', {});
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body.toString());
+      expect(body.message).toBe('Hello from API!');
+    });
   });
 
   describe('HTML generation', () => {

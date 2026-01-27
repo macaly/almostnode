@@ -487,21 +487,41 @@ export const METHODS = [
   'TRACE',
 ];
 
-// Client request (simplified)
+// CORS proxy getter - checks localStorage for configured proxy
+function getCorsProxy(): string | null {
+  if (typeof localStorage !== 'undefined') {
+    return localStorage.getItem('__corsProxyUrl') || null;
+  }
+  return null;
+}
+
+/**
+ * HTTP Client Request - makes real HTTP requests using fetch()
+ */
 export class ClientRequest extends Writable {
   method: string;
   path: string;
   headers: Record<string, string>;
 
-  constructor(options: RequestOptions) {
+  private _options: RequestOptions;
+  private _protocol: 'http' | 'https';
+  private _bodyChunks: Buffer[] = [];
+  private _aborted: boolean = false;
+  private _timeout: number | null = null;
+  private _timeoutId: ReturnType<typeof setTimeout> | null = null;
+  private _ended: boolean = false;
+
+  constructor(options: RequestOptions, protocol: 'http' | 'https' = 'http') {
     super();
+    this._options = options;
+    this._protocol = protocol;
     this.method = options.method || 'GET';
     this.path = options.path || '/';
     this.headers = {};
 
     if (options.headers) {
       for (const [key, value] of Object.entries(options.headers)) {
-        this.headers[key] = Array.isArray(value) ? value.join(', ') : value;
+        this.headers[key.toLowerCase()] = Array.isArray(value) ? value.join(', ') : value;
       }
     }
   }
@@ -513,25 +533,248 @@ export class ClientRequest extends Writable {
   getHeader(name: string): string | undefined {
     return this.headers[name.toLowerCase()];
   }
+
+  removeHeader(name: string): void {
+    delete this.headers[name.toLowerCase()];
+  }
+
+  write(
+    chunk: Buffer | string,
+    encodingOrCallback?: BufferEncoding | ((error?: Error | null) => void),
+    callback?: (error?: Error | null) => void
+  ): boolean {
+    const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+    this._bodyChunks.push(buffer);
+
+    const cb = typeof encodingOrCallback === 'function' ? encodingOrCallback : callback;
+    if (cb) {
+      queueMicrotask(() => cb(null));
+    }
+
+    return true;
+  }
+
+  end(
+    dataOrCallback?: Buffer | string | (() => void),
+    encodingOrCallback?: BufferEncoding | (() => void),
+    callback?: () => void
+  ): this {
+    if (this._ended) return this;
+    this._ended = true;
+
+    // Handle overloaded arguments
+    let finalCallback = callback;
+    if (typeof dataOrCallback === 'function') {
+      finalCallback = dataOrCallback;
+    } else if (dataOrCallback !== undefined) {
+      this.write(dataOrCallback as Buffer | string);
+    }
+
+    if (typeof encodingOrCallback === 'function') {
+      finalCallback = encodingOrCallback;
+    }
+
+    // Perform the actual request
+    this._performRequest().then(() => {
+      if (finalCallback) finalCallback();
+    }).catch((error) => {
+      this.emit('error', error);
+    });
+
+    return this;
+  }
+
+  abort(): void {
+    this._aborted = true;
+    if (this._timeoutId) {
+      clearTimeout(this._timeoutId);
+    }
+    this.emit('abort');
+  }
+
+  setTimeout(ms: number, callback?: () => void): this {
+    this._timeout = ms;
+    if (callback) {
+      this.once('timeout', callback);
+    }
+    return this;
+  }
+
+  private async _performRequest(): Promise<void> {
+    if (this._aborted) return;
+
+    try {
+      // Build URL
+      const protocol = this._protocol === 'https' ? 'https:' : 'http:';
+      const hostname = this._options.hostname || 'localhost';
+      const port = this._options.port ? `:${this._options.port}` : '';
+      const path = this._options.path || '/';
+      const url = `${protocol}//${hostname}${port}${path}`;
+
+      // Use CORS proxy if configured
+      const corsProxy = getCorsProxy();
+      const fetchUrl = corsProxy
+        ? corsProxy + encodeURIComponent(url)
+        : url;
+
+      // Build fetch options
+      const fetchOptions: RequestInit = {
+        method: this.method,
+        headers: this.headers,
+      };
+
+      // Add body if we have one (not for GET/HEAD)
+      if (this._bodyChunks.length > 0 && this.method !== 'GET' && this.method !== 'HEAD') {
+        fetchOptions.body = Buffer.concat(this._bodyChunks);
+      }
+
+      // Set up timeout with AbortController
+      const controller = new AbortController();
+      fetchOptions.signal = controller.signal;
+
+      if (this._timeout) {
+        this._timeoutId = setTimeout(() => {
+          controller.abort();
+          this.emit('timeout');
+        }, this._timeout);
+      }
+
+      // Make the request
+      const response = await fetch(fetchUrl, fetchOptions);
+
+      // Clear timeout
+      if (this._timeoutId) {
+        clearTimeout(this._timeoutId);
+        this._timeoutId = null;
+      }
+
+      if (this._aborted) return;
+
+      // Convert response to IncomingMessage
+      const incomingMessage = await this._responseToIncomingMessage(response);
+
+      // Emit response event
+      this.emit('response', incomingMessage);
+
+    } catch (error) {
+      if (this._timeoutId) {
+        clearTimeout(this._timeoutId);
+      }
+      if (this._aborted) return;
+
+      // Wrap abort errors
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Already emitted timeout event
+        return;
+      }
+
+      this.emit('error', error);
+    }
+  }
+
+  private async _responseToIncomingMessage(response: Response): Promise<IncomingMessage> {
+    const msg = new IncomingMessage();
+
+    // Set status
+    msg.statusCode = response.status;
+    msg.statusMessage = response.statusText || STATUS_CODES[response.status] || '';
+
+    // Copy headers
+    response.headers.forEach((value, key) => {
+      msg.headers[key.toLowerCase()] = value;
+      msg.rawHeaders.push(key, value);
+    });
+
+    // Read body and push to stream
+    const body = await response.arrayBuffer();
+    msg._setBody(Buffer.from(body));
+
+    return msg;
+  }
 }
 
+/**
+ * Helper to parse URL/options arguments for request()
+ */
+function parseRequestArgs(
+  urlOrOptions: string | URL | RequestOptions,
+  optionsOrCallback?: RequestOptions | ((res: IncomingMessage) => void),
+  callback?: (res: IncomingMessage) => void
+): { options: RequestOptions; callback?: (res: IncomingMessage) => void } {
+  let options: RequestOptions;
+  let cb = callback;
+
+  if (typeof urlOrOptions === 'string' || urlOrOptions instanceof URL) {
+    const parsed = new URL(urlOrOptions.toString());
+    options = {
+      hostname: parsed.hostname,
+      port: parsed.port ? parseInt(parsed.port) : undefined,
+      path: parsed.pathname + parsed.search,
+      method: 'GET',
+    };
+    if (typeof optionsOrCallback === 'function') {
+      cb = optionsOrCallback;
+    } else if (optionsOrCallback) {
+      options = { ...options, ...optionsOrCallback };
+    }
+  } else {
+    options = urlOrOptions;
+    if (typeof optionsOrCallback === 'function') {
+      cb = optionsOrCallback;
+    }
+  }
+
+  return { options, callback: cb };
+}
+
+/**
+ * Create an HTTP client request
+ */
 export function request(
-  options: RequestOptions,
+  urlOrOptions: string | URL | RequestOptions,
+  optionsOrCallback?: RequestOptions | ((res: IncomingMessage) => void),
   callback?: (res: IncomingMessage) => void
 ): ClientRequest {
-  const req = new ClientRequest(options);
-  if (callback) {
-    req.once('response', callback);
+  const { options, callback: cb } = parseRequestArgs(urlOrOptions, optionsOrCallback, callback);
+  const req = new ClientRequest(options, 'http');
+  if (cb) {
+    req.once('response', cb);
   }
   return req;
 }
 
+/**
+ * Make an HTTP GET request
+ */
 export function get(
-  options: RequestOptions,
+  urlOrOptions: string | URL | RequestOptions,
+  optionsOrCallback?: RequestOptions | ((res: IncomingMessage) => void),
   callback?: (res: IncomingMessage) => void
 ): ClientRequest {
-  const req = request({ ...options, method: 'GET' }, callback);
+  const { options, callback: cb } = parseRequestArgs(urlOrOptions, optionsOrCallback, callback);
+  const req = new ClientRequest({ ...options, method: 'GET' }, 'http');
+  if (cb) {
+    req.once('response', cb);
+  }
   req.end();
+  return req;
+}
+
+/**
+ * Internal: create client request with specified protocol
+ * Used by https module
+ */
+export function _createClientRequest(
+  urlOrOptions: string | URL | RequestOptions,
+  optionsOrCallback: RequestOptions | ((res: IncomingMessage) => void) | undefined,
+  callback: ((res: IncomingMessage) => void) | undefined,
+  protocol: 'http' | 'https'
+): ClientRequest {
+  const { options, callback: cb } = parseRequestArgs(urlOrOptions, optionsOrCallback, callback);
+  const req = new ClientRequest(options, protocol);
+  if (cb) {
+    req.once('response', cb);
+  }
   return req;
 }
 
@@ -589,4 +832,5 @@ export default {
   getAllServers,
   setServerListenCallback,
   setServerCloseCallback,
+  _createClientRequest,
 };

@@ -762,9 +762,9 @@ export class NextDevServer extends DevServer {
     }
 
     try {
-      // Read and transform the API handler
+      // Read and transform the API handler to CJS for eval execution
       const code = this.vfs.readFileSync(apiFile, 'utf8');
-      const transformed = await this.transformCode(code, apiFile);
+      const transformed = await this.transformApiHandler(code, apiFile);
 
       // Create mock req/res objects
       const req = this.createMockRequest(method, pathname, headers, body);
@@ -772,6 +772,15 @@ export class NextDevServer extends DevServer {
 
       // Execute the handler
       await this.executeApiHandler(transformed, req, res);
+
+      // Wait for async handlers (like those using https.get with callbacks)
+      // with a reasonable timeout
+      if (!res.isEnded()) {
+        const timeout = new Promise<void>((_, reject) => {
+          setTimeout(() => reject(new Error('API handler timeout')), 30000);
+        });
+        await Promise.race([res.waitForEnd(), timeout]);
+      }
 
       return res.toResponse();
     } catch (error) {
@@ -861,6 +870,19 @@ export class NextDevServer extends DevServer {
     const headers: Record<string, string> = {};
     let responseBody = '';
     let ended = false;
+    let resolveEnded: (() => void) | null = null;
+
+    // Promise that resolves when response is ended
+    const endedPromise = new Promise<void>((resolve) => {
+      resolveEnded = resolve;
+    });
+
+    const markEnded = () => {
+      if (!ended) {
+        ended = true;
+        if (resolveEnded) resolveEnded();
+      }
+    };
 
     return {
       status(code: number) {
@@ -874,7 +896,7 @@ export class NextDevServer extends DevServer {
       json(data: unknown) {
         headers['Content-Type'] = 'application/json; charset=utf-8';
         responseBody = JSON.stringify(data);
-        ended = true;
+        markEnded();
         return this;
       },
       send(data: string | object) {
@@ -882,12 +904,12 @@ export class NextDevServer extends DevServer {
           return this.json(data);
         }
         responseBody = data;
-        ended = true;
+        markEnded();
         return this;
       },
       end(data?: string) {
         if (data) responseBody = data;
-        ended = true;
+        markEnded();
         return this;
       },
       redirect(statusOrUrl: number | string, url?: string) {
@@ -898,8 +920,14 @@ export class NextDevServer extends DevServer {
           statusCode = 307;
           headers['Location'] = statusOrUrl;
         }
-        ended = true;
+        markEnded();
         return this;
+      },
+      isEnded() {
+        return ended;
+      },
+      waitForEnd() {
+        return endedPromise;
       },
       toResponse(): ResponseData {
         const buffer = Buffer.from(responseBody);
@@ -922,24 +950,67 @@ export class NextDevServer extends DevServer {
     req: ReturnType<typeof this.createMockRequest>,
     res: ReturnType<typeof this.createMockResponse>
   ): Promise<void> {
-    // Create a function that executes the handler
-    // This is a simplified approach - in real Next.js, this would be more complex
     try {
-      // Find the default export handler
-      const handlerMatch = code.match(/export\s+default\s+(?:async\s+)?function\s*\w*\s*\([^)]*\)/);
+      // Create a minimal require function for built-in modules
+      const builtinModules: Record<string, unknown> = {
+        https: await import('../shims/https'),
+        http: await import('../shims/http'),
+        path: await import('../shims/path'),
+        fs: await import('../shims/fs').then(m => m.createFsShim(this.vfs)),
+        url: await import('../shims/url'),
+        querystring: await import('../shims/querystring'),
+        util: await import('../shims/util'),
+        events: await import('../shims/events'),
+        stream: await import('../shims/stream'),
+        buffer: await import('../shims/buffer'),
+        crypto: await import('../shims/crypto'),
+      };
 
-      if (!handlerMatch) {
+      const require = (id: string): unknown => {
+        // Handle node: prefix
+        const modId = id.startsWith('node:') ? id.slice(5) : id;
+        if (builtinModules[modId]) {
+          return builtinModules[modId];
+        }
+        throw new Error(`Module not found: ${id}`);
+      };
+
+      // Create module context
+      const module = { exports: {} as Record<string, unknown> };
+      const exports = module.exports;
+
+      // Execute the transformed code
+      // The code is already in CJS format from esbuild transform
+      const wrappedCode = `
+        (function(exports, require, module) {
+          ${code}
+        })
+      `;
+
+      const fn = eval(wrappedCode);
+      fn(exports, require, module);
+
+      // Get the handler - check both module.exports and module.exports.default
+      let handler = module.exports.default || module.exports;
+
+      // If handler is still an object with a default property, unwrap it
+      if (typeof handler === 'object' && handler !== null && 'default' in handler) {
+        handler = (handler as Record<string, unknown>).default;
+      }
+
+      if (typeof handler !== 'function') {
         throw new Error('No default export handler found');
       }
 
-      // For now, return a placeholder response
-      // In a full implementation, we would use Function() or eval() to execute the handler
-      res.status(200).json({
-        message: 'API handler executed',
-        path: req.url,
-        method: req.method,
-      });
+      // Call the handler - it may be async
+      const result = handler(req, res);
+
+      // If the handler returns a promise, wait for it
+      if (result instanceof Promise) {
+        await result;
+      }
     } catch (error) {
+      console.error('[NextDevServer] API handler error:', error);
       throw error;
     }
   }
@@ -1514,7 +1585,7 @@ export class NextDevServer extends DevServer {
   }
 
   /**
-   * Transform JSX/TS code to browser-compatible JavaScript
+   * Transform JSX/TS code to browser-compatible JavaScript (ESM for browser)
    */
   private async transformCode(code: string, filename: string): Promise<string> {
     if (!isBrowser) {
@@ -1549,6 +1620,71 @@ export class NextDevServer extends DevServer {
     }
 
     return result.code;
+  }
+
+  /**
+   * Transform API handler code to CommonJS for eval execution
+   */
+  private async transformApiHandler(code: string, filename: string): Promise<string> {
+    if (isBrowser) {
+      // Use esbuild in browser
+      await initEsbuild();
+
+      const esbuild = getEsbuild();
+      if (!esbuild) {
+        throw new Error('esbuild not available');
+      }
+
+      let loader: 'js' | 'jsx' | 'ts' | 'tsx' = 'js';
+      if (filename.endsWith('.jsx')) loader = 'jsx';
+      else if (filename.endsWith('.tsx')) loader = 'tsx';
+      else if (filename.endsWith('.ts')) loader = 'ts';
+
+      const result = await esbuild.transform(code, {
+        loader,
+        format: 'cjs',  // CommonJS for eval execution
+        target: 'esnext',
+        platform: 'neutral',
+        sourcefile: filename,
+      });
+
+      return result.code;
+    }
+
+    // Simple ESM to CJS transform for Node.js/test environment
+    let transformed = code;
+
+    // Convert: import X from 'Y' -> const X = require('Y')
+    transformed = transformed.replace(
+      /import\s+(\w+)\s+from\s+['"]([^'"]+)['"]/g,
+      'const $1 = require("$2")'
+    );
+
+    // Convert: import { X } from 'Y' -> const { X } = require('Y')
+    transformed = transformed.replace(
+      /import\s+\{([^}]+)\}\s+from\s+['"]([^'"]+)['"]/g,
+      'const {$1} = require("$2")'
+    );
+
+    // Convert: export default function X -> module.exports = function X
+    transformed = transformed.replace(
+      /export\s+default\s+function\s+(\w+)/g,
+      'module.exports = function $1'
+    );
+
+    // Convert: export default function -> module.exports = function
+    transformed = transformed.replace(
+      /export\s+default\s+function\s*\(/g,
+      'module.exports = function('
+    );
+
+    // Convert: export default X -> module.exports = X
+    transformed = transformed.replace(
+      /export\s+default\s+/g,
+      'module.exports = '
+    );
+
+    return transformed;
   }
 
   /**
