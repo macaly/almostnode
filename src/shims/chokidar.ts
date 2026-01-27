@@ -36,6 +36,7 @@ export class FSWatcher extends EventEmitter {
   private options: ChokidarOptions;
   private closed = false;
   private ready = false;
+  private _eventCounts?: Map<string, number>;
 
   constructor(options: ChokidarOptions = {}) {
     super();
@@ -82,6 +83,7 @@ export class FSWatcher extends EventEmitter {
 
     const pathArray = Array.isArray(paths) ? paths : [paths];
     const pendingEmits: Array<() => void> = [];
+    console.log('[chokidar] add:', pathArray);
 
     for (const p of pathArray) {
       const normalized = this.normalizePath(p);
@@ -171,12 +173,26 @@ export class FSWatcher extends EventEmitter {
         fullPath = path;
       }
 
+      // Debug: Track watch events per path to detect infinite loops
+      const eventKey = `${eventType}:${fullPath}`;
+      if (!this._eventCounts) this._eventCounts = new Map<string, number>();
+      const count = (this._eventCounts.get(eventKey) || 0) + 1;
+      this._eventCounts.set(eventKey, count);
+      if (count === 5) {
+        console.warn(`[chokidar] Repeated event: ${eventType} on ${fullPath} (${count}+ times)`);
+      }
+
+      console.log('[chokidar] event:', eventType, fullPath);
+
       // If we're watching for a specific path, only emit for that
       if (watchFor && fullPath !== watchFor && !fullPath.startsWith(watchFor + '/')) {
         return;
       }
 
-      if (this.shouldIgnore(fullPath)) return;
+      if (this.shouldIgnore(fullPath)) {
+        console.log('[chokidar] ignored:', fullPath);
+        return;
+      }
 
       if (eventType === 'rename') {
         // File was added or removed
@@ -184,20 +200,24 @@ export class FSWatcher extends EventEmitter {
           try {
             const stats = this.vfs.statSync(fullPath);
             if (stats.isDirectory()) {
+              console.log('[chokidar] emit addDir:', fullPath);
               this.emit('addDir', fullPath, stats);
             } else {
+              console.log('[chokidar] emit add:', fullPath);
               this.emit('add', fullPath, stats);
             }
           } catch {
             // Race condition - file may have been deleted
           }
         } else {
+          console.log('[chokidar] emit unlink:', fullPath);
           this.emit('unlink', fullPath);
         }
       } else if (eventType === 'change') {
         // File was modified
         try {
           const stats = this.vfs.statSync(fullPath);
+          console.log('[chokidar] emit change:', fullPath);
           this.emit('change', fullPath, stats);
         } catch {
           // File may have been deleted

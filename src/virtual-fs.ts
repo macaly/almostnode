@@ -51,6 +51,48 @@ interface WatcherEntry {
   closed: boolean;
 }
 
+/**
+ * Create a Node.js-style error with code property
+ */
+export interface NodeError extends Error {
+  code: string;
+  errno: number;
+  syscall: string;
+  path?: string;
+}
+
+export function createNodeError(
+  code: 'ENOENT' | 'ENOTDIR' | 'EISDIR' | 'EEXIST' | 'ENOTEMPTY',
+  syscall: string,
+  path: string,
+  message?: string
+): NodeError {
+  const errno: Record<string, number> = {
+    ENOENT: -2,
+    ENOTDIR: -20,
+    EISDIR: -21,
+    EEXIST: -17,
+    ENOTEMPTY: -39,
+  };
+
+  const messages: Record<string, string> = {
+    ENOENT: 'no such file or directory',
+    ENOTDIR: 'not a directory',
+    EISDIR: 'is a directory',
+    EEXIST: 'file already exists',
+    ENOTEMPTY: 'directory not empty',
+  };
+
+  const err = new Error(
+    message || `${code}: ${messages[code]}, ${syscall} '${path}'`
+  ) as NodeError;
+  err.code = code;
+  err.errno = errno[code];
+  err.syscall = syscall;
+  err.path = path;
+  return err;
+}
+
 export class VirtualFS {
   private root: FSNode;
   private encoder = new TextEncoder();
@@ -171,7 +213,7 @@ export class VirtualFS {
   statSync(path: string): Stats {
     const node = this.getNode(path);
     if (!node) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'stat', path);
     }
 
     const now = Date.now();
@@ -222,11 +264,11 @@ export class VirtualFS {
     const node = this.getNode(path);
 
     if (!node) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'open', path);
     }
 
     if (node.type !== 'file') {
-      throw new Error(`EISDIR: illegal operation on a directory, '${path}'`);
+      throw createNodeError('EISDIR', 'read', path);
     }
 
     const content = node.content || new Uint8Array(0);
@@ -285,15 +327,15 @@ export class VirtualFS {
     const parent = this.getNode(parentPath);
 
     if (!parent) {
-      throw new Error(`ENOENT: no such file or directory, '${parentPath}'`);
+      throw createNodeError('ENOENT', 'mkdir', parentPath);
     }
 
     if (parent.type !== 'directory') {
-      throw new Error(`ENOTDIR: not a directory, '${parentPath}'`);
+      throw createNodeError('ENOTDIR', 'mkdir', parentPath);
     }
 
     if (parent.children!.has(basename)) {
-      throw new Error(`EEXIST: file already exists, '${path}'`);
+      throw createNodeError('EEXIST', 'mkdir', path);
     }
 
     parent.children!.set(basename, {
@@ -309,11 +351,11 @@ export class VirtualFS {
     const node = this.getNode(path);
 
     if (!node) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'scandir', path);
     }
 
     if (node.type !== 'directory') {
-      throw new Error(`ENOTDIR: not a directory, '${path}'`);
+      throw createNodeError('ENOTDIR', 'scandir', path);
     }
 
     return Array.from(node.children!.keys());
@@ -330,17 +372,17 @@ export class VirtualFS {
     const parent = this.getNode(parentPath);
 
     if (!parent || parent.type !== 'directory') {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'unlink', path);
     }
 
     const node = parent.children!.get(basename);
 
     if (!node) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'unlink', path);
     }
 
     if (node.type !== 'file') {
-      throw new Error(`EISDIR: illegal operation on a directory, '${path}'`);
+      throw createNodeError('EISDIR', 'unlink', path);
     }
 
     parent.children!.delete(basename);
@@ -364,21 +406,21 @@ export class VirtualFS {
     const parent = this.getNode(parentPath);
 
     if (!parent || parent.type !== 'directory') {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'rmdir', path);
     }
 
     const node = parent.children!.get(basename);
 
     if (!node) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'rmdir', path);
     }
 
     if (node.type !== 'directory') {
-      throw new Error(`ENOTDIR: not a directory, '${path}'`);
+      throw createNodeError('ENOTDIR', 'rmdir', path);
     }
 
     if (node.children!.size > 0) {
-      throw new Error(`ENOTEMPTY: directory not empty, '${path}'`);
+      throw createNodeError('ENOTEMPTY', 'rmdir', path);
     }
 
     parent.children!.delete(basename);
@@ -399,13 +441,13 @@ export class VirtualFS {
     const oldParent = this.getNode(oldParentPath);
 
     if (!oldParent || oldParent.type !== 'directory') {
-      throw new Error(`ENOENT: no such file or directory, '${oldPath}'`);
+      throw createNodeError('ENOENT', 'rename', oldPath);
     }
 
     const node = oldParent.children!.get(oldBasename);
 
     if (!node) {
-      throw new Error(`ENOENT: no such file or directory, '${oldPath}'`);
+      throw createNodeError('ENOENT', 'rename', oldPath);
     }
 
     const newParent = this.ensureDirectory(newParentPath);
@@ -502,7 +544,7 @@ export class VirtualFS {
   realpathSync(path: string): string {
     const normalized = this.normalizePath(path);
     if (!this.existsSync(normalized)) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'realpath', path);
     }
     return normalized;
   }
@@ -616,7 +658,7 @@ export class VirtualFS {
    */
   accessSync(path: string, mode?: number): void {
     if (!this.existsSync(path)) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'access', path);
     }
   }
 

@@ -605,6 +605,10 @@ var process = $process;
 var console = $console;
 var import_meta = $importMeta;
 var __dynamicImport = $dynamicImport;
+// Set up global.process and globalThis.process for code that accesses them directly
+var global = globalThis;
+globalThis.process = $process;
+global.process = $process;
 return (function() {
 ${code}
 }).call(this);
@@ -696,9 +700,11 @@ ${code}
     // Intercept rollup and esbuild - always use our shims
     // These packages have native binaries that don't work in browser
     if (id === 'rollup' || id.startsWith('rollup/') || id.startsWith('@rollup/')) {
+      console.log('[runtime] Intercepted rollup:', id);
       return builtinModules['rollup'];
     }
     if (id === 'esbuild' || id.startsWith('esbuild/') || id.startsWith('@esbuild/')) {
+      console.log('[runtime] Intercepted esbuild:', id);
       return builtinModules['esbuild'];
     }
     // Intercept prettier - uses createRequire which doesn't work in our runtime
@@ -811,11 +817,13 @@ export class Runtime {
 
   constructor(vfs: VirtualFS, options: RuntimeOptions = {}) {
     this.vfs = vfs;
-    this.fsShim = createFsShim(vfs);
+    // Create process first so we can get cwd for fs shim
     this.process = createProcess({
       cwd: options.cwd || '/',
       env: options.env,
     });
+    // Create fs shim with cwd getter for relative path resolution
+    this.fsShim = createFsShim(vfs, () => this.process.cwd());
     this.options = options;
 
     // Initialize child_process with VFS for bash command support
@@ -824,6 +832,95 @@ export class Runtime {
     // Initialize file watcher shims with VFS
     chokidarShim.setVFS(vfs);
     readdirpShim.setVFS(vfs);
+
+    // Initialize esbuild shim with VFS for file access
+    esbuildShim.setVFS(vfs);
+
+    // Polyfill TextDecoder to handle base64/base64url/hex gracefully
+    // (Some CLI tools incorrectly try to use TextDecoder for these)
+    this.setupTextDecoderPolyfill();
+  }
+
+  /**
+   * Set up a polyfilled TextDecoder that handles binary encodings
+   */
+  private setupTextDecoderPolyfill(): void {
+    const OriginalTextDecoder = globalThis.TextDecoder;
+
+    class PolyfillTextDecoder {
+      private encoding: string;
+      private decoder: TextDecoder | null = null;
+
+      constructor(encoding: string = 'utf-8', options?: TextDecoderOptions) {
+        this.encoding = encoding.toLowerCase();
+
+        // For valid text encodings, use the real TextDecoder
+        const validTextEncodings = [
+          'utf-8', 'utf8', 'utf-16le', 'utf-16be', 'utf-16',
+          'ascii', 'iso-8859-1', 'latin1', 'windows-1252'
+        ];
+
+        if (validTextEncodings.includes(this.encoding)) {
+          try {
+            this.decoder = new OriginalTextDecoder(encoding, options);
+          } catch {
+            // Fall back to utf-8
+            this.decoder = new OriginalTextDecoder('utf-8', options);
+          }
+        }
+        // For binary encodings (base64, base64url, hex), decoder stays null
+      }
+
+      decode(input?: BufferSource, options?: TextDecodeOptions): string {
+        if (this.decoder) {
+          return this.decoder.decode(input, options);
+        }
+
+        // Handle binary encodings manually
+        if (!input) return '';
+
+        const bytes = input instanceof ArrayBuffer
+          ? new Uint8Array(input)
+          : new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+
+        if (this.encoding === 'base64') {
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return btoa(binary);
+        }
+
+        if (this.encoding === 'base64url') {
+          let binary = '';
+          for (let i = 0; i < bytes.length; i++) {
+            binary += String.fromCharCode(bytes[i]);
+          }
+          return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        }
+
+        if (this.encoding === 'hex') {
+          let hex = '';
+          for (let i = 0; i < bytes.length; i++) {
+            hex += bytes[i].toString(16).padStart(2, '0');
+          }
+          return hex;
+        }
+
+        // Fallback: decode as utf-8
+        return new OriginalTextDecoder('utf-8').decode(input, options);
+      }
+
+      get fatal(): boolean {
+        return this.decoder?.fatal ?? false;
+      }
+
+      get ignoreBOM(): boolean {
+        return this.decoder?.ignoreBOM ?? false;
+      }
+    }
+
+    globalThis.TextDecoder = PolyfillTextDecoder as unknown as typeof TextDecoder;
   }
 
   /**
@@ -877,6 +974,11 @@ var __dirname = $dirname;
 var process = $process;
 var console = $console;
 var import_meta = $importMeta;
+// Set up global.process and globalThis.process for code that accesses them directly
+var global = globalThis;
+globalThis.process = $process;
+global.process = $process;
+
 return (function() {
 ${code}
 }).call(this);

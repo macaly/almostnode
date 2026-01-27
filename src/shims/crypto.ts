@@ -31,6 +31,10 @@ export function randomInt(min: number, max?: number): number {
   return min + (array[0] % range);
 }
 
+export function getRandomValues<T extends ArrayBufferView | null>(array: T): T {
+  return crypto.getRandomValues(array);
+}
+
 // ============================================================================
 // Hash functions
 // ============================================================================
@@ -675,6 +679,7 @@ export default {
   randomBytes,
   randomUUID,
   randomInt,
+  getRandomValues,
   createHash,
   createHmac,
   createSign,

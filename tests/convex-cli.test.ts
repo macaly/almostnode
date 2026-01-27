@@ -219,11 +219,115 @@ export const add = mutation({
     }
   }, 60000);
 
-  it.skip('should run convex dev --once (not yet implemented)', async () => {
-    // This test will be enabled once we have:
-    // 1. Full crypto.sign/verify support for jose JWT library
-    // 2. Dynamic import support in our runtime
-    // 3. Better process.stdin/stdout handling for CLI
-    expect(true).toBe(true);
-  });
+  it('should attempt to run convex dev --once', async () => {
+    const result = await pm.install('convex', {});
+    expect(result.added).toContain('convex');
+
+    // Remove the convex folder created by beforeEach - let CLI create it fresh
+    if (vfs.existsSync('/project/convex/tasks.ts')) {
+      vfs.unlinkSync('/project/convex/tasks.ts');
+    }
+    if (vfs.existsSync('/project/convex')) {
+      vfs.rmdirSync('/project/convex');
+    }
+
+    // Create package.json - the CLI looks for it at various locations
+    const packageJson = JSON.stringify({
+      name: 'test-convex-project',
+      version: '1.0.0',
+      dependencies: {
+        convex: '^1.0.0'
+      }
+    }, null, 2);
+    vfs.writeFileSync('/project/package.json', packageJson);
+    // CLI also looks for package.json at root for some operations
+    vfs.writeFileSync('/package.json', packageJson);
+
+    // Create minimal convex.json to point to convex folder
+    vfs.writeFileSync('/project/convex.json', JSON.stringify({
+      functions: "convex/"
+    }, null, 2));
+
+    // Create the convex folder with a minimal schema
+    vfs.mkdirSync('/project/convex', { recursive: true });
+    vfs.writeFileSync('/project/convex/schema.ts', `
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+
+export default defineSchema({
+  tasks: defineTable({
+    text: v.string(),
+    completed: v.boolean(),
+  }),
+});
+`);
+
+    // Create a simple function
+    vfs.writeFileSync('/project/convex/tasks.ts', `
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("tasks").collect();
+  },
+});
+
+export const add = mutation({
+  args: { text: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("tasks", { text: args.text, completed: false });
+  },
+});
+`);
+
+    console.log('/project contents before CLI:', vfs.readdirSync('/project'));
+    console.log('/project/convex contents:', vfs.readdirSync('/project/convex'));
+
+    const code = `
+      // Set environment for Convex CLI
+      process.env.CONVEX_DEPLOY_KEY = 'prod:***REMOVED***|***REMOVED***';
+
+      console.log('CWD:', process.cwd());
+      console.log('/project contents:', require('fs').readdirSync('/project'));
+
+
+      process.argv = ['node', 'convex', 'dev', '--once'];
+
+      // Run the CLI
+      require('./node_modules/convex/dist/cli.bundle.cjs');
+    `;
+
+    try {
+      runtime.execute(code, '/project/cli-test.js');
+      console.log('CLI started, waiting for async operations...');
+
+      // Wait for any pending promises/timers
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      console.log('Wait complete');
+    } catch (error) {
+      // Some errors are expected (process.exit, stack overflow in watcher)
+      console.log('CLI completed with:', error.message);
+    }
+
+    // Verify deployment was provisioned
+    console.log('/project contents:', vfs.readdirSync('/project'));
+
+    // Check .env.local was created with deployment info
+    expect(vfs.existsSync('/project/.env.local')).toBe(true);
+    const envLocal = vfs.readFileSync('/project/.env.local', 'utf8');
+    console.log('.env.local contents:\n', envLocal);
+    expect(envLocal).toContain('CONVEX_DEPLOYMENT=');
+    expect(envLocal).toContain('CONVEX_URL=');
+
+    // Check _generated files were created (CLI writes to /convex due to path resolution)
+    if (vfs.existsSync('/convex/_generated')) {
+      const generated = vfs.readdirSync('/convex/_generated');
+      console.log('Generated files:', generated);
+      expect(generated).toContain('api.js');
+      expect(generated).toContain('server.js');
+    }
+  }, 120000);
 });

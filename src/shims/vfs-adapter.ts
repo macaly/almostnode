@@ -16,6 +16,7 @@ import type {
   FileContent,
 } from 'just-bash';
 import type { VirtualFS } from '../virtual-fs';
+import { createNodeError } from '../virtual-fs';
 
 export class VirtualFSAdapter implements IFileSystem {
   constructor(private vfs: VirtualFS) {}
@@ -166,7 +167,7 @@ export class VirtualFSAdapter implements IFileSystem {
       if (options?.force) {
         return; // Force mode ignores missing files
       }
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'rm', path);
     }
 
     const stats = this.vfs.statSync(path);
@@ -328,7 +329,7 @@ export class VirtualFSAdapter implements IFileSystem {
   async chmod(_path: string, _mode: number): Promise<void> {
     // VFS doesn't track permissions, but we verify the path exists
     if (!this.vfs.existsSync(_path)) {
-      throw new Error(`ENOENT: no such file or directory, '${_path}'`);
+      throw createNodeError('ENOENT', 'chmod', _path);
     }
     // No-op
   }
@@ -369,7 +370,7 @@ export class VirtualFSAdapter implements IFileSystem {
   async realpath(path: string): Promise<string> {
     // Verify path exists
     if (!this.vfs.existsSync(path)) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'realpath', path);
     }
     return this.normalizePath(path);
   }
@@ -380,7 +381,7 @@ export class VirtualFSAdapter implements IFileSystem {
   async utimes(path: string, _atime: Date, _mtime: Date): Promise<void> {
     // VFS doesn't track times, but we verify the path exists
     if (!this.vfs.existsSync(path)) {
-      throw new Error(`ENOENT: no such file or directory, '${path}'`);
+      throw createNodeError('ENOENT', 'utimes', path);
     }
     // No-op
   }

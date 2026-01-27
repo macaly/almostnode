@@ -169,19 +169,27 @@ export function createProcess(options?: {
     env,
 
     cwd() {
+      // Debug: Log cwd calls (limited to first 5)
+      if (!proc._cwdCallCount) proc._cwdCallCount = 0;
+      proc._cwdCallCount++;
+      if (proc._cwdCallCount <= 5 || proc._cwdCallCount % 100 === 0) {
+        console.log(`[process] cwd() called (${proc._cwdCallCount}x), returning:`, currentDir);
+      }
       return currentDir;
     },
 
     chdir(directory: string) {
+      console.log('[process] chdir called:', directory, 'from:', currentDir);
       if (!directory.startsWith('/')) {
         directory = currentDir + '/' + directory;
       }
       currentDir = directory;
+      console.log('[process] chdir result:', currentDir);
     },
 
     platform: 'linux', // Pretend to be linux for better compatibility
-    version: 'v18.0.0',
-    versions: { node: '18.0.0', v8: '10.2.154.26', uv: '1.43.0' },
+    version: 'v20.0.0',
+    versions: { node: '20.0.0', v8: '11.3.244.8', uv: '1.44.2' },
 
     argv: ['node', '/index.js'],
     argv0: 'node',

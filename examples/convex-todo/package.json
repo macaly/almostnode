@@ -1,0 +1,29 @@
+{
+  "name": "convex-todo-demo",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "buffer": "^6.0.3",
+    "convex": "^1.31.6",
+    "events": "^3.3.0",
+    "pako": "^2.1.0",
+    "process": "^0.11.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "resolve.exports": "^2.0.3"
+  },
+  "devDependencies": {
+    "@types/pako": "^2.0.4",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.7"
+  }
+}
