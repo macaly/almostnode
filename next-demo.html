@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Next.js Demo - WebContainer Test</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        margin: 0;
+        padding: 20px;
+        background: #0a0a0a;
+        color: #eee;
+        min-height: 100vh;
+      }
+
+      h1 {
+        color: #fff;
+        margin-bottom: 10px;
+      }
+
+      h1 span {
+        background: linear-gradient(90deg, #0070f3 0%, #00a3ff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .subtitle {
+        color: #888;
+        margin-bottom: 20px;
+      }
+
+      .container {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 20px;
+        height: calc(100vh - 140px);
+      }
+
+      .panel {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 15px;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #333;
+      }
+
+      .panel-title {
+        font-weight: bold;
+        color: #fff;
+      }
+
+      .output {
+        flex: 1;
+        background: #111;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 11px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+
+      .output div {
+        margin-bottom: 2px;
+      }
+
+      .output .hmr {
+        color: #22c55e;
+        font-weight: bold;
+      }
+
+      .output .error {
+        color: #ef4444;
+      }
+
+      .editor-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .file-tabs {
+        display: flex;
+        gap: 5px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      .file-tab {
+        padding: 5px 10px;
+        background: #333;
+        border: none;
+        border-radius: 4px;
+        color: #888;
+        cursor: pointer;
+        font-size: 12px;
+      }
+
+      .file-tab.active {
+        background: #0070f3;
+        color: white;
+      }
+
+      .file-tab:hover:not(.active) {
+        background: #444;
+      }
+
+      textarea {
+        flex: 1;
+        background: #111;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 10px;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        font-size: 13px;
+        color: #eee;
+        resize: none;
+        line-height: 1.5;
+      }
+
+      textarea:focus {
+        outline: none;
+        border-color: #0070f3;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        padding: 8px 16px;
+        background: #0070f3;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+      }
+
+      button:hover {
+        background: #005cc5;
+      }
+
+      button:disabled {
+        background: #333;
+        cursor: not-allowed;
+      }
+
+      .preview-frame {
+        flex: 1;
+        border: none;
+        border-radius: 8px;
+        background: white;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+      }
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #333;
+      }
+
+      .status-dot.running {
+        background: #22c55e;
+      }
+
+      .status-dot.error {
+        background: #ef4444;
+      }
+
+      .preview-placeholder {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #111;
+        border-radius: 8px;
+        color: #666;
+        text-align: center;
+        padding: 20px;
+      }
+
+      .preview-placeholder .icon {
+        font-size: 48px;
+        margin-bottom: 10px;
+      }
+
+      .hmr-indicator {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #22c55e;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-weight: bold;
+        opacity: 0;
+        transform: translateY(-20px);
+        transition: opacity 0.3s, transform 0.3s;
+        z-index: 1000;
+      }
+
+      .hmr-indicator.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .next-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #000;
+        border: 1px solid #333;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 12px;
+        margin-left: 10px;
+      }
+
+      .next-badge svg {
+        width: 16px;
+        height: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>
+      <span>Next.js</span> Demo - File-based Routing in Browser
+      <span class="next-badge">
+        <svg viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <mask id="mask0_408_134" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="0" y="0" width="180" height="180">
+            <circle cx="90" cy="90" r="90" fill="white"/>
+          </mask>
+          <g mask="url(#mask0_408_134)">
+            <circle cx="90" cy="90" r="87" fill="black" stroke="white" stroke-width="6"/>
+            <path d="M149.508 157.52L69.142 54H54V125.97H66.1136V69.3836L139.999 164.845C143.333 162.614 146.509 160.165 149.508 157.52Z" fill="url(#paint0_linear_408_134)"/>
+            <rect x="115" y="54" width="12" height="72" fill="url(#paint1_linear_408_134)"/>
+          </g>
+          <defs>
+            <linearGradient id="paint0_linear_408_134" x1="109" y1="116.5" x2="144.5" y2="160.5" gradientUnits="userSpaceOnUse">
+              <stop stop-color="white"/>
+              <stop offset="1" stop-color="white" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="paint1_linear_408_134" x1="121" y1="54" x2="120.799" y2="106.875" gradientUnits="userSpaceOnUse">
+              <stop stop-color="white"/>
+              <stop offset="1" stop-color="white" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        Next.js Style
+      </span>
+    </h1>
+    <p class="subtitle">
+      File-based routing, API routes, and HMR - all running in your browser
+    </p>
+
+    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+      <button id="pages-router-btn" class="router-toggle active" style="padding: 6px 16px; border-radius: 20px;">
+        Pages Router (/pages)
+      </button>
+      <button id="app-router-btn" class="router-toggle" style="padding: 6px 16px; border-radius: 20px; background: #333;">
+        App Router (/app)
+      </button>
+    </div>
+    <style>
+      .router-toggle.active { background: #0070f3 !important; }
+      .router-toggle:not(.active) { background: #333 !important; }
+    </style>
+
+    <div class="hmr-indicator" id="hmr-indicator">HMR Update!</div>
+
+    <div class="container">
+      <!-- Left Panel: Editor -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Editor</span>
+          <div class="status">
+            <div class="status-dot" id="status-dot"></div>
+            <span id="status-text">Initializing...</span>
+          </div>
+        </div>
+
+        <div class="file-tabs" id="file-tabs">
+          <button class="file-tab active" data-file="/pages/index.jsx">index.jsx</button>
+          <button class="file-tab" data-file="/pages/about.jsx">about.jsx</button>
+          <button class="file-tab" data-file="/pages/users/[id].jsx">[id].jsx</button>
+          <button class="file-tab" data-file="/pages/api/hello.js">api/hello.js</button>
+          <button class="file-tab" data-file="/styles/globals.css">globals.css</button>
+        </div>
+
+        <div class="editor-container">
+          <textarea id="editor" placeholder="Loading..."></textarea>
+        </div>
+
+        <div class="actions">
+          <button id="save-btn" disabled>Save (triggers HMR)</button>
+          <button id="run-btn" disabled style="background: #22c55e;">Start Preview</button>
+        </div>
+      </div>
+
+      <!-- Middle Panel: Preview -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Live Preview</span>
+          <button id="refresh-btn" style="padding: 4px 8px; font-size: 12px;">Refresh</button>
+        </div>
+
+        <div class="preview-placeholder" id="preview-placeholder">
+          <div class="icon">N</div>
+          <div>Click <strong>"Start Preview"</strong> to launch the dev server</div>
+          <div style="margin-top: 10px; color: #888;">Uses Service Worker for Next.js-like experience</div>
+        </div>
+
+        <iframe id="preview-frame" class="preview-frame" style="display: none;"></iframe>
+      </div>
+
+      <!-- Right Panel: Console Output -->
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Console</span>
+          <button id="clear-btn" style="padding: 4px 8px; font-size: 12px;">Clear</button>
+        </div>
+        <div class="output" id="output"></div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initNextDemo, initNextAppRouterDemo, startNextDevServer, VirtualFS, Runtime } from './src/next-demo.ts';
+
+      const outputEl = document.getElementById('output');
+      const editorEl = document.getElementById('editor');
+      const statusDot = document.getElementById('status-dot');
+      const statusText = document.getElementById('status-text');
+      const saveBtn = document.getElementById('save-btn');
+      const clearBtn = document.getElementById('clear-btn');
+      const runBtn = document.getElementById('run-btn');
+      const refreshBtn = document.getElementById('refresh-btn');
+      const fileTabsEl = document.getElementById('file-tabs');
+      const previewFrame = document.getElementById('preview-frame');
+      const previewPlaceholder = document.getElementById('preview-placeholder');
+      const hmrIndicator = document.getElementById('hmr-indicator');
+      const pagesRouterBtn = document.getElementById('pages-router-btn');
+      const appRouterBtn = document.getElementById('app-router-btn');
+
+      let vfs = null;
+      let runtime = null;
+      let devServer = null;
+      let devServerUrl = null;
+      let currentFile = '/pages/index.jsx';
+      let previewActive = false;
+      let useAppRouter = false;
+
+      // File tabs for each router mode
+      const pagesRouterTabs = [
+        { file: '/pages/index.jsx', label: 'index.jsx' },
+        { file: '/pages/about.jsx', label: 'about.jsx' },
+        { file: '/pages/users/[id].jsx', label: '[id].jsx' },
+        { file: '/pages/api/hello.js', label: 'api/hello.js' },
+        { file: '/styles/globals.css', label: 'globals.css' },
+      ];
+
+      const appRouterTabs = [
+        { file: '/app/page.jsx', label: 'page.jsx' },
+        { file: '/app/layout.jsx', label: 'layout.jsx' },
+        { file: '/app/about/page.jsx', label: 'about/page.jsx' },
+        { file: '/app/dashboard/page.jsx', label: 'dashboard/page.jsx' },
+        { file: '/app/dashboard/layout.jsx', label: 'dashboard/layout.jsx' },
+        { file: '/app/users/[id]/page.jsx', label: 'users/[id]/page.jsx' },
+        { file: '/app/globals.css', label: 'globals.css' },
+      ];
+
+      function log(message, className = '') {
+        const line = document.createElement('div');
+        line.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        if (className) line.className = className;
+        outputEl.appendChild(line);
+        outputEl.scrollTop = outputEl.scrollHeight;
+      }
+
+      function setStatus(status, text) {
+        statusDot.className = 'status-dot ' + status;
+        statusText.textContent = text;
+      }
+
+      function showHmrIndicator() {
+        hmrIndicator.classList.add('show');
+        setTimeout(() => hmrIndicator.classList.remove('show'), 2000);
+      }
+
+      function updateFileTabs() {
+        const tabs = useAppRouter ? appRouterTabs : pagesRouterTabs;
+        fileTabsEl.innerHTML = tabs.map((tab, i) =>
+          `<button class="file-tab${i === 0 ? ' active' : ''}" data-file="${tab.file}">${tab.label}</button>`
+        ).join('');
+
+        // Load first file
+        currentFile = tabs[0].file;
+        loadFile(currentFile);
+      }
+
+      function loadFile(path) {
+        if (!vfs) return;
+
+        try {
+          const content = vfs.readFileSync(path, 'utf8');
+          editorEl.value = content;
+          currentFile = path;
+
+          // Update active tab
+          document.querySelectorAll('.file-tab').forEach((tab) => {
+            tab.classList.toggle('active', tab.dataset.file === path);
+          });
+        } catch (e) {
+          log(`Error loading ${path}: ${e.message}`, 'error');
+        }
+      }
+
+      function saveFile() {
+        if (!vfs || !currentFile) return;
+
+        try {
+          vfs.writeFileSync(currentFile, editorEl.value);
+          log(`Saved: ${currentFile}`);
+        } catch (e) {
+          log(`Error saving ${currentFile}: ${e.message}`, 'error');
+        }
+      }
+
+      function updatePreview() {
+        if (!previewActive || !devServerUrl) return;
+
+        // Force iframe refresh by adding timestamp
+        const url = devServerUrl + '?t=' + Date.now();
+        previewFrame.src = url;
+      }
+
+      async function startPreview() {
+        previewPlaceholder.style.display = 'none';
+        previewFrame.style.display = 'block';
+        previewActive = true;
+
+        if (devServerUrl) {
+          previewFrame.src = devServerUrl;
+        }
+
+        log('Preview started!');
+        log('Edit a file and save to see HMR in action', 'hmr');
+      }
+
+      // Initialize
+      async function init() {
+        try {
+          setStatus('', 'Initializing...');
+
+          // Reset state
+          if (devServer) {
+            devServer.stop();
+            devServer = null;
+            devServerUrl = null;
+          }
+          previewActive = false;
+          previewPlaceholder.style.display = 'flex';
+          previewFrame.style.display = 'none';
+          runBtn.disabled = false;
+          outputEl.innerHTML = '';
+
+          // Initialize based on router mode
+          const result = useAppRouter
+            ? await initNextAppRouterDemo(outputEl)
+            : await initNextDemo(outputEl);
+
+          vfs = result.vfs;
+          runtime = result.runtime;
+
+          // Set up file watcher for HMR
+          const watchDir = useAppRouter ? '/app' : '/pages';
+          vfs.watch(watchDir, { recursive: true }, (eventType, filename) => {
+            if (eventType === 'change' && previewActive) {
+              log(`File ${eventType}: ${filename}`);
+            }
+          });
+
+          // Enable buttons
+          saveBtn.disabled = false;
+          runBtn.disabled = false;
+
+          // Update file tabs
+          updateFileTabs();
+
+          setStatus('running', 'Ready');
+          log('');
+          log(`Demo ready! Using ${useAppRouter ? 'App Router' : 'Pages Router'}.`);
+          log('Click "Start Preview" to launch the dev server.');
+        } catch (e) {
+          setStatus('error', 'Error');
+          log(`Initialization error: ${e.message}`, 'error');
+          console.error(e);
+        }
+      }
+
+      // Start Preview using Service Worker-based dev server
+      async function doStartPreview() {
+        try {
+          runBtn.disabled = true;
+          setStatus('', 'Starting dev server...');
+
+          // Start the dev server with Service Worker
+          const result = await startNextDevServer(vfs, {
+            port: 3001,
+            log: log,
+          });
+
+          devServer = result.server;
+          devServerUrl = result.url;
+
+          log(`Dev server URL: ${devServerUrl}`);
+
+          // Listen for HMR updates
+          devServer.on('hmr-update', (update) => {
+            log(`HMR: ${update.path}`, 'hmr');
+            showHmrIndicator();
+          });
+
+          // Start the preview
+          await startPreview();
+
+          setStatus('running', 'Dev server running');
+        } catch (e) {
+          setStatus('error', 'Preview failed');
+          log(`Preview error: ${e.message}`, 'error');
+          console.error(e);
+          runBtn.disabled = false;
+        }
+      }
+
+      // Event listeners
+      saveBtn.addEventListener('click', saveFile);
+
+      clearBtn.addEventListener('click', () => {
+        outputEl.innerHTML = '';
+      });
+
+      refreshBtn.addEventListener('click', () => {
+        if (previewActive) {
+          log('Refreshing preview...');
+          updatePreview();
+        }
+      });
+
+      runBtn.addEventListener('click', doStartPreview);
+
+      fileTabsEl.addEventListener('click', (e) => {
+        if (e.target.classList.contains('file-tab')) {
+          loadFile(e.target.dataset.file);
+        }
+      });
+
+      // Keyboard shortcut: Ctrl/Cmd + S to save
+      editorEl.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+          e.preventDefault();
+          saveFile();
+        }
+      });
+
+      // Router toggle buttons
+      pagesRouterBtn.addEventListener('click', async () => {
+        if (!useAppRouter) return; // Already on Pages Router
+        useAppRouter = false;
+        pagesRouterBtn.classList.add('active');
+        appRouterBtn.classList.remove('active');
+        log('Switching to Pages Router...');
+        await init();
+      });
+
+      appRouterBtn.addEventListener('click', async () => {
+        if (useAppRouter) return; // Already on App Router
+        useAppRouter = true;
+        appRouterBtn.classList.add('active');
+        pagesRouterBtn.classList.remove('active');
+        log('Switching to App Router...');
+        await init();
+      });
+
+      // Start initialization
+      init();
+    </script>
+  </body>
+</html>

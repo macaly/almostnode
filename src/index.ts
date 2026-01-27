@@ -21,6 +21,10 @@ export * as util from './shims/util';
 export * as npm from './npm';
 export { PackageManager, install } from './npm';
 export { ServerBridge, getServerBridge, resetServerBridge } from './server-bridge';
+// Dev servers
+export { DevServer, DevServerOptions, ResponseData, HMRUpdate } from './dev-server';
+export { ViteDevServer, ViteDevServerOptions } from './frameworks/vite-dev-server';
+export { NextDevServer, NextDevServerOptions } from './frameworks/next-dev-server';
 // New shims for Vite support
 export * as chokidar from './shims/chokidar';
 export * as ws from './shims/ws';
