@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bash Demo - Mini WebContainer</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #1a1a2e;
+        color: #eee;
+        min-height: 100vh;
+      }
+      .container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 200px;
+        gap: 16px;
+        padding: 16px;
+        height: 100vh;
+      }
+      .editor-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .editor-panel h3 {
+        margin: 0;
+        color: #888;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      textarea {
+        flex: 1;
+        background: #16213e;
+        color: #0f0;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 12px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 14px;
+        resize: none;
+      }
+      textarea:focus {
+        outline: none;
+        border-color: #4a69bd;
+      }
+      .preview-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      iframe {
+        flex: 1;
+        background: #fff;
+        border: 1px solid #333;
+        border-radius: 8px;
+      }
+      .terminal-panel {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      #terminal {
+        flex: 1;
+        background: #0d0d0d;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 12px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 12px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      .status {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        background: #333;
+      }
+      .status.loading { background: #f39c12; color: #000; }
+      .status.ready { background: #27ae60; }
+      .status.error { background: #e74c3c; }
+      .btn {
+        background: #4a69bd;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .btn:hover {
+        background: #3c5aa6;
+      }
+      .btn:disabled {
+        background: #555;
+        cursor: not-allowed;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .badge {
+        background: #9b59b6;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10px;
+        margin-left: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="editor-panel">
+        <div class="toolbar">
+          <h3>script.js <span class="badge">Bash + Node</span></h3>
+          <button id="runBtn" class="btn">Run Script</button>
+        </div>
+        <textarea id="editor">const { exec } = require('child_process');
+const fs = require('fs');
+
+console.log('=== Mini WebContainer Bash Demo ===\n');
+
+// Create some files using Node.js fs
+fs.writeFileSync('/data/users.json', JSON.stringify([
+  { name: 'Alice', role: 'admin' },
+  { name: 'Bob', role: 'user' },
+  { name: 'Charlie', role: 'user' }
+], null, 2));
+
+fs.writeFileSync('/data/config.txt', 'DEBUG=true\nPORT=3000\nHOST=localhost');
+
+console.log('Created files with Node.js fs module\n');
+
+// Now use bash commands to explore them!
+exec('ls -la /data', (err, stdout) => {
+  console.log('📁 Files in /data:');
+  console.log(stdout);
+});
+
+// Use cat to read a file
+exec('cat /data/users.json', (err, stdout) => {
+  console.log('📄 Content of users.json:');
+  console.log(stdout);
+});
+
+// Use grep to search
+exec('grep "admin" /data/users.json', (err, stdout) => {
+  console.log('🔍 Lines containing "admin":');
+  console.log(stdout || '(no matches)');
+});
+
+// Use pipes!
+exec('cat /data/config.txt | grep PORT', (err, stdout) => {
+  console.log('⚡ Config PORT setting:');
+  console.log(stdout);
+});
+
+// Use wc to count
+exec('cat /data/users.json | wc -l', (err, stdout) => {
+  console.log('📊 Line count:');
+  console.log(stdout.trim() + ' lines');
+});
+
+// Chain commands
+exec('echo "Hello" && echo "World" && echo "!"', (err, stdout) => {
+  console.log('🔗 Chained commands:');
+  console.log(stdout);
+});
+
+// Use awk for data processing
+exec('echo "apple 5\\nbanana 3\\norange 7" | awk \'{print $1, "has", $2, "items"}\'', (err, stdout) => {
+  console.log('🧮 AWK processing:');
+  console.log(stdout);
+});
+
+// Environment variables
+exec('echo "User: $USER, Home: $HOME"', (err, stdout) => {
+  console.log('🌍 Environment:');
+  console.log(stdout);
+});
+
+console.log('\\n✅ All commands executed!');</textarea>
+      </div>
+      <div class="preview-panel">
+        <h3>Preview <span id="status" class="status ready">Ready</span></h3>
+        <iframe id="preview"></iframe>
+      </div>
+      <div class="terminal-panel">
+        <h3>Console</h3>
+        <div id="terminal"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/demo.ts"></script>
+  </body>
+</html>

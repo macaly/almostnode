@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mini WebContainer Demo</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #1a1a2e;
+        color: #eee;
+        min-height: 100vh;
+      }
+      .container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: 1fr 200px;
+        gap: 16px;
+        padding: 16px;
+        height: 100vh;
+      }
+      .editor-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .editor-panel h3 {
+        margin: 0;
+        color: #888;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      textarea {
+        flex: 1;
+        background: #16213e;
+        color: #0f0;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 12px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 14px;
+        resize: none;
+      }
+      textarea:focus {
+        outline: none;
+        border-color: #4a69bd;
+      }
+      .preview-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      iframe {
+        flex: 1;
+        background: #fff;
+        border: 1px solid #333;
+        border-radius: 8px;
+      }
+      .terminal-panel {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      #terminal {
+        flex: 1;
+        background: #0d0d0d;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 12px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 12px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      .status {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        background: #333;
+      }
+      .status.loading { background: #f39c12; color: #000; }
+      .status.ready { background: #27ae60; }
+      .status.error { background: #e74c3c; }
+      .btn {
+        background: #4a69bd;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+      .btn:hover {
+        background: #3c5aa6;
+      }
+      .btn:disabled {
+        background: #555;
+        cursor: not-allowed;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="editor-panel">
+        <div class="toolbar">
+          <h3>server.js</h3>
+          <button id="runBtn" class="btn">Run Server</button>
+        </div>
+        <textarea id="editor">const http = require('http');
+
+const server = http.createServer((req, res) => {
+  console.log(`${req.method} ${req.url}`);
+
+  if (req.url === '/') {
+    res.setHeader('Content-Type', 'text/html');
+    res.end(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <style>
+            body {
+              font-family: system-ui, sans-serif;
+              padding: 2rem;
+              background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+              min-height: 100vh;
+              margin: 0;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
+            }
+            h1 { color: white; margin-bottom: 0.5rem; }
+            p { color: rgba(255,255,255,0.8); }
+            .card {
+              background: white;
+              padding: 2rem;
+              border-radius: 12px;
+              box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+              text-align: center;
+            }
+            a { color: #667eea; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Hello from Mini WebContainer!</h1>
+            <p>This HTTP server is running entirely in your browser.</p>
+            <p>Try visiting <a href="/api/time">/api/time</a> or <a href="/api/random">/api/random</a></p>
+          </div>
+        </body>
+      </html>
+    `);
+  } else if (req.url === '/api/time') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ time: new Date().toISOString() }));
+  } else if (req.url === '/api/random') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ random: Math.random() }));
+  } else {
+    res.statusCode = 404;
+    res.end('Not Found');
+  }
+});
+
+server.listen(3000, () => {
+  console.log('Server running on port 3000');
+});</textarea>
+      </div>
+      <div class="preview-panel">
+        <h3>Preview <span id="status" class="status loading">Ready</span></h3>
+        <iframe id="preview"></iframe>
+      </div>
+      <div class="terminal-panel">
+        <h3>Console</h3>
+        <div id="terminal"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/demo.ts"></script>
+  </body>
+</html>
