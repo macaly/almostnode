@@ -26,6 +26,9 @@ const fileTreeEl = document.getElementById('fileTree') as HTMLDivElement;
 const editorTabsEl = document.getElementById('editorTabs') as HTMLDivElement;
 const editorContentEl = document.getElementById('editorContent') as HTMLDivElement;
 const saveBtn = document.getElementById('saveBtn') as HTMLButtonElement;
+const watchModeCheckbox = document.getElementById('watchModeCheckbox') as HTMLInputElement;
+const watchModeLabel = document.getElementById('watchModeLabel') as HTMLLabelElement;
+const watchModeText = document.getElementById('watchModeText') as HTMLSpanElement;
 
 let serverUrl: string | null = null;
 let iframe: HTMLIFrameElement | null = null;
@@ -33,6 +36,13 @@ let vfs: VirtualFS | null = null;
 let convexUrl: string | null = null;
 let cliRuntime: Runtime | null = null;
 let devServer: NextDevServer | null = null;
+
+// Watch mode state
+let watchModeEnabled = false;
+let convexWatcher: { close: () => void } | null = null;
+let isDeploying = false;
+let deployDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+const DEPLOY_DEBOUNCE_MS = 800;
 
 // Editor state
 interface OpenFile {
@@ -790,6 +800,103 @@ export default app;
   }
 }
 
+/**
+ * Set up file watcher for /convex directory to auto-deploy on changes
+ */
+function setupConvexWatcher(): void {
+  if (!vfs || convexWatcher) return;
+
+  log('Setting up watch mode for /convex directory...', 'info');
+
+  convexWatcher = vfs.watch('/convex', { recursive: true }, (eventType, filename) => {
+    // Ignore if watch mode is disabled or already deploying
+    if (!watchModeEnabled || isDeploying) return;
+
+    // Ignore generated files and dotfiles
+    if (!filename || filename.includes('_generated') || filename.startsWith('.')) return;
+
+    // Only watch source files
+    if (!/\.(ts|tsx|js|json)$/.test(filename)) return;
+
+    log(`Watch: detected change in ${filename}`, 'info');
+
+    // Debounce to handle rapid edits
+    if (deployDebounceTimeout) {
+      clearTimeout(deployDebounceTimeout);
+    }
+
+    deployDebounceTimeout = setTimeout(() => {
+      const key = convexKeyInput.value.trim();
+      if (!key) {
+        log('Watch: no deploy key, skipping auto-deploy', 'warn');
+        return;
+      }
+
+      triggerAutoDeployment(key);
+    }, DEPLOY_DEBOUNCE_MS);
+  });
+
+  log('Watch mode enabled - changes to /convex files will auto-deploy', 'success');
+}
+
+/**
+ * Trigger an automatic deployment from watch mode
+ */
+async function triggerAutoDeployment(key: string): Promise<void> {
+  if (isDeploying) {
+    log('Watch: deployment already in progress, skipping', 'warn');
+    return;
+  }
+
+  isDeploying = true;
+
+  // Update UI to show auto-deploying state
+  deployBtn.classList.add('auto-deploying');
+  deployBtn.textContent = 'Auto-deploying...';
+  watchModeLabel.classList.add('watching');
+  watchModeText.textContent = 'Deploying...';
+
+  try {
+    await deployToConvex(key);
+    log('Watch: auto-deployment complete', 'success');
+  } catch (error) {
+    log(`Watch: auto-deployment failed: ${error}`, 'error');
+  } finally {
+    isDeploying = false;
+
+    // Restore UI
+    deployBtn.classList.remove('auto-deploying');
+    deployBtn.textContent = 'Re-deploy';
+    watchModeLabel.classList.remove('watching');
+    watchModeText.textContent = 'Watching';
+  }
+}
+
+/**
+ * Stop watching for file changes
+ */
+function stopConvexWatcher(): void {
+  if (convexWatcher) {
+    convexWatcher.close();
+    convexWatcher = null;
+    log('Watch mode disabled', 'info');
+  }
+}
+
+/**
+ * Update watch mode UI state
+ */
+function updateWatchModeUI(): void {
+  if (watchModeEnabled) {
+    watchModeLabel.classList.add('active');
+    watchModeText.textContent = 'Watching';
+  } else {
+    watchModeLabel.classList.remove('active');
+    watchModeLabel.classList.remove('watching');
+    watchModeText.textContent = 'Watch';
+  }
+}
+
 async function main() {
   try {
     setStatus('Creating virtual file system...', 'loading');
@@ -926,6 +1033,7 @@ async function main() {
       deployBtn.textContent = isRedeployment ? 'Re-deploying...' : 'Deploying...';
       // Remove success class during deployment
       deployBtn.classList.remove('success');
+      isDeploying = true;
 
       try {
         await deployToConvex(key);
@@ -945,13 +1053,41 @@ async function main() {
         deployBtn.classList.add('success');
         deployBtn.disabled = false;
 
+        // Enable watch mode checkbox after first successful deployment
+        watchModeCheckbox.disabled = false;
+
+        // Set up watcher if watch mode is enabled
+        if (watchModeEnabled && !convexWatcher) {
+          setupConvexWatcher();
+        }
+
         log('Convex connected! The app will now use real-time data.', 'success');
-        log('Edit /convex files and click "Re-deploy" to push changes.', 'info');
+        if (!watchModeEnabled) {
+          log('Edit /convex files and click "Re-deploy" to push changes.', 'info');
+          log('Or enable "Watch" mode for automatic re-deployment.', 'info');
+        }
       } catch (error) {
         logStatus('ERROR', `Deployment failed: ${error}`);
         // Keep "Re-deploy" text if already connected, otherwise show "Deploy"
         deployBtn.textContent = convexStatusEl?.style.display === 'inline-flex' ? 'Re-deploy' : 'Deploy';
         deployBtn.disabled = false;
+      } finally {
+        isDeploying = false;
+      }
+    };
+
+    // Watch mode checkbox handler
+    watchModeCheckbox.onchange = () => {
+      watchModeEnabled = watchModeCheckbox.checked;
+      updateWatchModeUI();
+
+      if (watchModeEnabled) {
+        // Only set up watcher if we've already deployed (have a key)
+        if (convexKeyInput.value.trim() && deployBtn.classList.contains('success')) {
+          setupConvexWatcher();
+        }
+      } else {
+        stopConvexWatcher();
       }
     };
 
