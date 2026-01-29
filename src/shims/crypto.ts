@@ -132,6 +132,124 @@ class Hmac {
 }
 
 // ============================================================================
+// PBKDF2 (Password-Based Key Derivation Function 2)
+// ============================================================================
+
+type BinaryLike = string | Buffer | Uint8Array;
+
+/**
+ * Async PBKDF2 implementation using WebCrypto
+ */
+async function pbkdf2Async(
+  password: BinaryLike,
+  salt: BinaryLike,
+  iterations: number,
+  keylen: number,
+  digest: string
+): Promise<Buffer> {
+  const passwordBuffer = typeof password === 'string' ? Buffer.from(password) : password;
+  const saltBuffer = typeof salt === 'string' ? Buffer.from(salt) : salt;
+
+  const key = await crypto.subtle.importKey(
+    'raw',
+    passwordBuffer,
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltBuffer,
+      iterations,
+      hash: normalizeHashAlgorithm(digest),
+    },
+    key,
+    keylen * 8 // Convert bytes to bits
+  );
+
+  return Buffer.from(derivedBits);
+}
+
+/**
+ * PBKDF2 with callback (Node.js compatible API)
+ */
+export function pbkdf2(
+  password: BinaryLike,
+  salt: BinaryLike,
+  iterations: number,
+  keylen: number,
+  digest: string,
+  callback: (err: Error | null, derivedKey: Buffer) => void
+): void {
+  pbkdf2Async(password, salt, iterations, keylen, digest)
+    .then(key => callback(null, key))
+    .catch(err => callback(err, Buffer.alloc(0)));
+}
+
+/**
+ * Synchronous PBKDF2 - Note: Uses a pure JS implementation since WebCrypto is async-only
+ * For better performance, use the async pbkdf2() function instead
+ */
+export function pbkdf2Sync(
+  password: BinaryLike,
+  salt: BinaryLike,
+  iterations: number,
+  keylen: number,
+  digest: string
+): Buffer {
+  const passwordBuffer = typeof password === 'string' ? Buffer.from(password) : password;
+  const saltBuffer = typeof salt === 'string' ? Buffer.from(salt) : salt;
+  const hashAlg = normalizeHashAlgorithm(digest);
+
+  // Determine hash output size
+  let hashLen: number;
+  if (hashAlg.includes('512')) {
+    hashLen = 64;
+  } else if (hashAlg.includes('384')) {
+    hashLen = 48;
+  } else if (hashAlg.includes('1') || hashAlg === 'SHA-1') {
+    hashLen = 20;
+  } else {
+    hashLen = 32; // SHA-256 default
+  }
+
+  // Pure JS PBKDF2 implementation
+  const numBlocks = Math.ceil(keylen / hashLen);
+  const derivedKey = new Uint8Array(numBlocks * hashLen);
+
+  for (let blockNum = 1; blockNum <= numBlocks; blockNum++) {
+    // U1 = PRF(Password, Salt || INT(blockNum))
+    const blockNumBuf = new Uint8Array(4);
+    blockNumBuf[0] = (blockNum >>> 24) & 0xff;
+    blockNumBuf[1] = (blockNum >>> 16) & 0xff;
+    blockNumBuf[2] = (blockNum >>> 8) & 0xff;
+    blockNumBuf[3] = blockNum & 0xff;
+
+    const saltWithBlock = new Uint8Array(saltBuffer.length + 4);
+    saltWithBlock.set(saltBuffer);
+    saltWithBlock.set(blockNumBuf, saltBuffer.length);
+
+    let u = syncHmac(saltWithBlock, passwordBuffer, hashAlg);
+    const block = new Uint8Array(u);
+
+    // U2, U3, ... Ui
+    for (let i = 1; i < iterations; i++) {
+      u = syncHmac(u, passwordBuffer, hashAlg);
+      // XOR with accumulated block
+      for (let j = 0; j < block.length; j++) {
+        block[j] ^= u[j];
+      }
+    }
+
+    derivedKey.set(block, (blockNum - 1) * hashLen);
+  }
+
+  return Buffer.from(derivedKey.slice(0, keylen));
+}
+
+// ============================================================================
 // Sign and Verify (main functions jose uses)
 // ============================================================================
 
@@ -686,6 +804,8 @@ export default {
   createVerify,
   sign,
   verify,
+  pbkdf2,
+  pbkdf2Sync,
   timingSafeEqual,
   getCiphers,
   getHashes,

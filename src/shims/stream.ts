@@ -166,6 +166,37 @@ export class Readable extends EventEmitter {
     this.emit('close');
     return this;
   }
+
+  /**
+   * Creates a Readable stream from an iterable or async iterable
+   * @param iterable - An iterable or async iterable to create the stream from
+   * @param options - Optional stream options
+   */
+  static from(
+    iterable: Iterable<unknown> | AsyncIterable<unknown>,
+    options?: { objectMode?: boolean; highWaterMark?: number }
+  ): Readable {
+    const readable = new Readable();
+
+    // Handle async iteration
+    (async () => {
+      try {
+        // Use for-await-of which works with both sync and async iterables
+        for await (const chunk of iterable as AsyncIterable<unknown>) {
+          if (chunk !== null && chunk !== undefined) {
+            // Convert to Buffer if it's a string
+            const data = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+            readable.push(data as Buffer);
+          }
+        }
+        readable.push(null); // Signal end of stream
+      } catch (err) {
+        readable.destroy(err as Error);
+      }
+    })();
+
+    return readable;
+  }
 }
 
 export class Writable extends EventEmitter {
@@ -417,6 +448,8 @@ export class Stream extends EventEmitter {
 (Stream as unknown as Record<string, unknown>).Transform = Transform;
 (Stream as unknown as Record<string, unknown>).PassThrough = PassThrough;
 (Stream as unknown as Record<string, unknown>).Stream = Stream;
+// Also expose Readable.from on Stream for compatibility
+(Stream as unknown as Record<string, unknown>).from = Readable.from;
 
 // Promises API
 export const promises = {

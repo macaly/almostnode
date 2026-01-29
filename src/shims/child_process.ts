@@ -21,22 +21,138 @@ if (typeof globalThis.process === 'undefined') {
   };
 }
 
-import { Bash } from 'just-bash';
+import { Bash, defineCommand } from 'just-bash';
 import { EventEmitter } from './events';
 import { Readable, Writable, Buffer } from './stream';
 import type { VirtualFS } from '../virtual-fs';
 import { VirtualFSAdapter } from './vfs-adapter';
+import { Runtime } from '../runtime';
 
 // Singleton bash instance - uses VFS adapter for two-way file sync
 let bashInstance: Bash | null = null;
 let vfsAdapter: VirtualFSAdapter | null = null;
+let currentVfs: VirtualFS | null = null;
 
 /**
  * Initialize the child_process shim with a VirtualFS instance
  * Creates a single Bash instance with VirtualFSAdapter for efficient file access
  */
 export function initChildProcess(vfs: VirtualFS): void {
+  currentVfs = vfs;
   vfsAdapter = new VirtualFSAdapter(vfs);
+
+  // Create custom 'node' command that runs JS files using the Runtime
+  const nodeCommand = defineCommand('node', async (args, ctx) => {
+    if (!currentVfs) {
+      return { stdout: '', stderr: 'VFS not initialized\n', exitCode: 1 };
+    }
+
+    const scriptPath = args[0];
+    if (!scriptPath) {
+      return { stdout: '', stderr: 'Usage: node <script.js> [args...]\n', exitCode: 1 };
+    }
+
+    // Resolve the script path
+    const resolvedPath = scriptPath.startsWith('/')
+      ? scriptPath
+      : `${ctx.cwd}/${scriptPath}`.replace(/\/+/g, '/');
+
+    try {
+      // Check if file exists
+      if (!currentVfs.existsSync(resolvedPath)) {
+        return { stdout: '', stderr: `Error: Cannot find module '${resolvedPath}'\n`, exitCode: 1 };
+      }
+
+      let stdout = '';
+      let stderr = '';
+
+      // Create a runtime with the current environment
+      const runtime = new Runtime(currentVfs, {
+        cwd: ctx.cwd,
+        env: ctx.env,
+        onConsole: (method, consoleArgs) => {
+          const msg = consoleArgs.map(a => String(a)).join(' ') + '\n';
+          if (method === 'error') {
+            stderr += msg;
+          } else {
+            stdout += msg;
+          }
+        },
+      });
+
+      // Set up process.argv for the script
+      const processShim = (globalThis as any).process || {};
+      const originalArgv = processShim.argv;
+      processShim.argv = ['node', resolvedPath, ...args.slice(1)];
+      (globalThis as any).process = processShim;
+
+      try {
+        // Run the script
+        runtime.runFile(resolvedPath);
+        return { stdout, stderr, exitCode: 0 };
+      } finally {
+        // Restore original argv
+        processShim.argv = originalArgv;
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      return { stdout: '', stderr: `Error: ${errorMsg}\n`, exitCode: 1 };
+    }
+  });
+
+  // Create custom 'convex' command that runs the Convex CLI
+  const convexCommand = defineCommand('convex', async (args, ctx) => {
+    if (!currentVfs) {
+      return { stdout: '', stderr: 'VFS not initialized\n', exitCode: 1 };
+    }
+
+    // Find the Convex CLI bundle
+    const cliBundlePath = '/node_modules/convex/dist/cli.bundle.cjs';
+    if (!currentVfs.existsSync(cliBundlePath)) {
+      return { stdout: '', stderr: 'Convex CLI not found. Run: npm install convex\n', exitCode: 1 };
+    }
+
+    let stdout = '';
+    let stderr = '';
+
+    try {
+      // Create a runtime with the current environment
+      const runtime = new Runtime(currentVfs, {
+        cwd: ctx.cwd,
+        env: ctx.env,
+        onConsole: (method, consoleArgs) => {
+          const msg = consoleArgs.map(a => String(a)).join(' ') + '\n';
+          if (method === 'error') {
+            stderr += msg;
+          } else {
+            stdout += msg;
+          }
+        },
+      });
+
+      // Set up process.argv for the CLI
+      const processShim = (globalThis as any).process || {};
+      const originalArgv = processShim.argv;
+      const originalEnv = { ...processShim.env };
+
+      processShim.argv = ['node', 'convex', ...args];
+      processShim.env = { ...processShim.env, ...ctx.env };
+      (globalThis as any).process = processShim;
+
+      try {
+        // Run the CLI bundle
+        runtime.runFile(cliBundlePath);
+        return { stdout, stderr, exitCode: 0 };
+      } finally {
+        // Restore original state
+        processShim.argv = originalArgv;
+        processShim.env = originalEnv;
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      return { stdout, stderr: stderr + `Error: ${errorMsg}\n`, exitCode: 1 };
+    }
+  });
 
   bashInstance = new Bash({
     fs: vfsAdapter,
@@ -44,9 +160,10 @@ export function initChildProcess(vfs: VirtualFS): void {
     env: {
       HOME: '/home/user',
       USER: 'user',
-      PATH: '/usr/local/bin:/usr/bin:/bin',
+      PATH: '/usr/local/bin:/usr/bin:/bin:/node_modules/.bin',
       NODE_ENV: 'development',
     },
+    customCommands: [nodeCommand, convexCommand],
   });
 }
 

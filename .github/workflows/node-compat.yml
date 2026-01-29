@@ -1,0 +1,159 @@
+name: Node.js Compatibility Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'src/shims/**'
+      - 'tests/node-compat/**'
+      - 'src/virtual-fs.ts'
+      - '.github/workflows/node-compat.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'src/shims/**'
+      - 'tests/node-compat/**'
+      - 'src/virtual-fs.ts'
+      - '.github/workflows/node-compat.yml'
+
+jobs:
+  test:
+    name: Node.js Compatibility
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Node.js compatibility tests
+        run: npm run test:run -- tests/node-compat/ --reporter=verbose
+
+      - name: Generate compatibility report
+        if: always()
+        run: |
+          echo "# Node.js Compatibility Report" > compatibility-report.md
+          echo "" >> compatibility-report.md
+          echo "Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> compatibility-report.md
+          echo "" >> compatibility-report.md
+          echo "## Test Results" >> compatibility-report.md
+          echo "" >> compatibility-report.md
+          npm run test:run -- tests/node-compat/ --reporter=json 2>/dev/null | jq -r '
+            .testResults[] |
+            "### " + (.name | split("/") | last) + "\n" +
+            "- Passed: " + (.assertionResults | map(select(.status == "passed")) | length | tostring) + "\n" +
+            "- Failed: " + (.assertionResults | map(select(.status == "failed")) | length | tostring) + "\n" +
+            "- Skipped: " + (.assertionResults | map(select(.status == "skipped" or .status == "pending")) | length | tostring) + "\n"
+          ' >> compatibility-report.md 2>/dev/null || echo "Could not generate detailed report" >> compatibility-report.md
+
+      - name: Upload compatibility report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-report
+          path: compatibility-report.md
+
+  compatibility-summary:
+    name: Coverage Summary
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate coverage summary
+        id: coverage
+        run: |
+          OUTPUT=$(npm run test:run -- tests/node-compat/ 2>&1 || true)
+          PASSED=$(echo "$OUTPUT" | grep -oP '\d+(?= passed)' | tail -1 || echo "0")
+          FAILED=$(echo "$OUTPUT" | grep -oP '\d+(?= failed)' | tail -1 || echo "0")
+          SKIPPED=$(echo "$OUTPUT" | grep -oP '\d+(?= skipped)' | tail -1 || echo "0")
+          TOTAL=$((PASSED + FAILED + SKIPPED))
+          if [ "$TOTAL" -gt 0 ]; then
+            PERCENT=$((PASSED * 100 / TOTAL))
+          else
+            PERCENT=0
+          fi
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "failed=$FAILED" >> $GITHUB_OUTPUT
+          echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
+          echo "percent=$PERCENT" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const passed = '${{ steps.coverage.outputs.passed }}';
+            const failed = '${{ steps.coverage.outputs.failed }}';
+            const skipped = '${{ steps.coverage.outputs.skipped }}';
+            const percent = '${{ steps.coverage.outputs.percent }}';
+
+            const emoji = percent >= 90 ? '🟢' : percent >= 70 ? '🟡' : '🔴';
+
+            const body = `## ${emoji} Node.js Compatibility: ${percent}%
+
+            | Status | Count |
+            |--------|-------|
+            | ✅ Passed | ${passed} |
+            | ❌ Failed | ${failed} |
+            | ⏭️ Skipped | ${skipped} |
+
+            <details>
+            <summary>Modules tested</summary>
+
+            - \`path\` - Path manipulation
+            - \`buffer\` - Binary data handling
+            - \`stream\` - Readable/Writable streams
+            - \`url\` - URL parsing
+            - \`events\` - EventEmitter
+            - \`fs\` - File system operations
+            - \`util\` - Utility functions
+
+            </details>`;
+
+            // Find existing comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const botComment = comments.find(c =>
+              c.user.type === 'Bot' &&
+              c.body.includes('Node.js Compatibility')
+            );
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }

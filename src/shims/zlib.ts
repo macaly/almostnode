@@ -5,10 +5,6 @@
 
 import { Buffer } from './stream';
 import pako from 'pako';
-// @ts-expect-error - direct import of brotli-wasm web bundle
-import init, * as brotliWasm from 'brotli-wasm/pkg.web/brotli_wasm.js';
-// @ts-expect-error - Vite URL import for the WASM file
-import brotliWasmUrl from 'brotli-wasm/pkg.web/brotli_wasm_bg.wasm?url';
 
 // Brotli WASM instance - loaded lazily
 let brotliModule: { compress: (data: Uint8Array) => Uint8Array; decompress: (data: Uint8Array) => Uint8Array } | null = null;
@@ -19,9 +15,12 @@ async function loadBrotli(): Promise<typeof brotliModule> {
   if (!brotliLoadPromise) {
     brotliLoadPromise = (async () => {
       try {
-        // Initialize brotli-wasm with the explicit WASM URL
-        await init(brotliWasmUrl);
-        brotliModule = brotliWasm as typeof brotliModule;
+        // Dynamic import - brotli-wasm handles environment detection automatically
+        // In Node.js: returns sync module
+        // In browser: returns promise that resolves after WASM init
+        const brotliWasmModule = await import('brotli-wasm');
+        // The default export is a promise that resolves to the module
+        brotliModule = await brotliWasmModule.default;
         console.log('[zlib] brotli-wasm loaded successfully');
         return brotliModule;
       } catch (error) {

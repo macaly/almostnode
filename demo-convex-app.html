@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Convex App Demo - Browser Node.js</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background: #1e293b;
+      padding: 0.75rem 1.5rem;
+      border-bottom: 1px solid #334155;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    header p {
+      margin: 0.25rem 0 0;
+      color: #94a3b8;
+      font-size: 0.75rem;
+    }
+    .main {
+      display: grid;
+      grid-template-columns: 200px 1fr 1fr;
+      grid-template-rows: 1fr auto;
+      flex: 1;
+      overflow: hidden;
+    }
+    .panel {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .panel-header {
+      background: #1e293b;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #334155;
+      font-weight: 600;
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 36px;
+    }
+
+    /* File Tree Panel */
+    .file-tree {
+      border-right: 1px solid #334155;
+      grid-row: 1 / 2;
+    }
+    .file-tree-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 0;
+      font-size: 0.75rem;
+    }
+    .tree-item {
+      display: flex;
+      align-items: center;
+      padding: 0.25rem 0.5rem;
+      cursor: pointer;
+      user-select: none;
+    }
+    .tree-item:hover {
+      background: #1e293b;
+    }
+    .tree-item.selected {
+      background: #334155;
+    }
+    .tree-item .icon {
+      width: 16px;
+      margin-right: 0.25rem;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .tree-item .name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .tree-folder > .tree-children {
+      display: none;
+    }
+    .tree-folder.expanded > .tree-children {
+      display: block;
+    }
+    .tree-children {
+      padding-left: 1rem;
+    }
+
+    /* Code Editor Panel */
+    .editor {
+      border-right: 1px solid #334155;
+      grid-row: 1 / 2;
+    }
+    .editor-tabs {
+      display: flex;
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+      overflow-x: auto;
+      min-height: 32px;
+    }
+    .editor-tab {
+      display: flex;
+      align-items: center;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.7rem;
+      border-right: 1px solid #334155;
+      cursor: pointer;
+      white-space: nowrap;
+      gap: 0.5rem;
+    }
+    .editor-tab:hover {
+      background: #334155;
+    }
+    .editor-tab.active {
+      background: #0f172a;
+      border-bottom: 2px solid #3b82f6;
+    }
+    .editor-tab .modified {
+      color: #fbbf24;
+    }
+    .editor-tab .close {
+      opacity: 0.5;
+      font-size: 0.8rem;
+    }
+    .editor-tab .close:hover {
+      opacity: 1;
+    }
+    .editor-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .editor-textarea {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+      padding: 0.75rem;
+      resize: none;
+      outline: none;
+      tab-size: 2;
+    }
+    .editor-empty {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: 0.875rem;
+    }
+
+    /* Preview Panel */
+    .preview {
+      grid-row: 1 / 2;
+      display: flex;
+      flex-direction: column;
+    }
+    #previewContainer {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+    .preview iframe {
+      flex: 1;
+      width: 100%;
+      border: none;
+      background: white;
+    }
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      background: #1e293b;
+    }
+    .loading-content {
+      text-align: center;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 3px solid #334155;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Bottom Panel (Logs + Deploy) */
+    .bottom-panel {
+      grid-column: 1 / 4;
+      grid-row: 2 / 3;
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid #334155;
+      max-height: 200px;
+    }
+    .bottom-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #1e293b;
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #334155;
+    }
+    .bottom-header-left {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .bottom-header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .log-output {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 0.75rem;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.7rem;
+      line-height: 1.4;
+      background: #0f172a;
+    }
+    .log-output div {
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .log-output .error {
+      color: #f87171;
+    }
+    .log-output .warn {
+      color: #fbbf24;
+    }
+    .log-output .success {
+      color: #4ade80;
+    }
+
+    /* Buttons */
+    .buttons {
+      display: flex;
+      gap: 0.5rem;
+    }
+    button {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.7rem;
+      border: none;
+      border-radius: 4px;
+      background: #3b82f6;
+      color: white;
+      cursor: pointer;
+      font-weight: 500;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button:disabled {
+      background: #475569;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: #475569;
+    }
+    button.secondary:hover {
+      background: #64748b;
+    }
+    button.deploy {
+      background: #f97316;
+    }
+    button.deploy:hover:not(:disabled) {
+      background: #ea580c;
+    }
+    button.deploy.success {
+      background: #22c55e;
+    }
+
+    /* Status */
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.2rem 0.6rem;
+      background: #334155;
+      border-radius: 999px;
+      font-size: 0.7rem;
+    }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #475569;
+    }
+    .status-dot.running {
+      background: #4ade80;
+    }
+    .status-dot.loading {
+      background: #fbbf24;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* Deploy Input */
+    .deploy-input {
+      padding: 0.35rem 0.5rem;
+      font-size: 0.7rem;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      background: #0f172a;
+      color: #e2e8f0;
+      width: 200px;
+    }
+    .deploy-input::placeholder {
+      color: #64748b;
+    }
+    .deploy-input.connected {
+      width: 140px;
+      border-color: #22c55e;
+      color: #64748b;
+    }
+
+    /* Convex Status */
+    .convex-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.2rem 0.6rem;
+      background: rgba(34, 197, 94, 0.15);
+      border: 1px solid #22c55e;
+      border-radius: 999px;
+      font-size: 0.65rem;
+      color: #4ade80;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>
+        <span>📋</span>
+        Convex App Demo
+      </h1>
+      <p>Next.js + shadcn/ui + Convex running in the browser</p>
+    </header>
+
+    <div class="main">
+      <!-- File Tree Panel -->
+      <div class="panel file-tree">
+        <div class="panel-header">
+          <span>Files</span>
+        </div>
+        <div class="file-tree-content" id="fileTree">
+          <!-- File tree will be populated by JavaScript -->
+        </div>
+      </div>
+
+      <!-- Code Editor Panel -->
+      <div class="panel editor">
+        <div class="panel-header">
+          <span>Editor</span>
+          <button id="saveBtn" class="secondary" disabled>Save (Ctrl+S)</button>
+        </div>
+        <div class="editor-tabs" id="editorTabs">
+          <!-- Tabs will be populated by JavaScript -->
+        </div>
+        <div class="editor-content" id="editorContent">
+          <div class="editor-empty">Select a file to edit</div>
+        </div>
+      </div>
+
+      <!-- Preview Panel -->
+      <div class="panel preview">
+        <div class="panel-header">
+          <span>Preview</span>
+          <div class="buttons">
+            <button id="refreshBtn" disabled>Refresh</button>
+            <button id="openBtn" class="secondary" disabled>Open Tab</button>
+          </div>
+        </div>
+        <div id="previewContainer">
+          <div class="loading">
+            <div class="loading-content">
+              <div class="spinner"></div>
+              <p>Starting dev server...</p>
+              <p style="font-size: 0.7rem; color: #64748b;">This may take a moment</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom Panel (Logs + Deploy) -->
+      <div class="bottom-panel">
+        <div class="bottom-header">
+          <div class="bottom-header-left">
+            <span style="font-weight: 600; font-size: 0.75rem;">Console</span>
+            <div class="status">
+              <span class="status-dot" id="statusDot"></span>
+              <span id="statusText">Initializing...</span>
+            </div>
+          </div>
+          <div class="bottom-header-right">
+            <div id="convexStatus" class="convex-status" style="display: none;">
+              <span class="status-dot running"></span>
+              <span id="convexStatusText">Connected</span>
+            </div>
+            <input type="text" class="deploy-input" id="convexKey" placeholder="Convex deploy key" />
+            <button id="deployBtn" class="deploy" disabled>Deploy</button>
+          </div>
+        </div>
+        <div class="log-output" id="logs"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/convex-app-demo-entry.ts"></script>
+</body>
+</html>

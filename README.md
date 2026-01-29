@@ -34,17 +34,43 @@ npm install just-node
 ```typescript
 import { createContainer } from 'just-node';
 
-// Create a container
+// Create a Node.js container in the browser
 const container = createContainer();
 
-// Write files to the virtual filesystem
-container.vfs.writeFileSync('/index.js', `
-  const message = 'Hello from just-node!';
-  console.log(message);
+// Execute JavaScript code directly
+const result = container.execute(`
+  const path = require('path');
+  const fs = require('fs');
+
+  // Use Node.js APIs in the browser!
+  fs.writeFileSync('/hello.txt', 'Hello from the browser!');
+  module.exports = fs.readFileSync('/hello.txt', 'utf8');
 `);
 
-// Execute code
-container.runtime.runFile('/index.js');
+console.log(result.exports); // "Hello from the browser!"
+```
+
+### Working with Virtual File System
+
+```typescript
+import { createContainer } from 'just-node';
+
+const container = createContainer();
+const { vfs } = container;
+
+// Pre-populate the virtual filesystem
+vfs.writeFileSync('/src/index.js', `
+  const data = require('./data.json');
+  console.log('Users:', data.users.length);
+  module.exports = data;
+`);
+
+vfs.writeFileSync('/src/data.json', JSON.stringify({
+  users: [{ name: 'Alice' }, { name: 'Bob' }]
+}));
+
+// Run from the virtual filesystem
+const result = container.runFile('/src/index.js');
 ```
 
 ### With npm Packages
@@ -58,12 +84,10 @@ const container = createContainer();
 await container.npm.install('lodash');
 
 // Use it in your code
-container.vfs.writeFileSync('/app.js', `
+container.execute(`
   const _ = require('lodash');
   console.log(_.capitalize('hello world'));
 `);
-
-container.runtime.runFile('/app.js');
 // Output: Hello world
 ```
 
@@ -120,6 +144,36 @@ bridge.registerServer(server, 3000);
 - Prototyping without server setup
 - Educational tools
 - Lightweight sandboxed execution
+
+### Example: Code Playground
+
+```typescript
+import { createContainer } from 'just-node';
+
+function createPlayground() {
+  const container = createContainer();
+
+  return {
+    run: (code: string) => {
+      try {
+        const result = container.execute(code);
+        return { success: true, result: result.exports };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    },
+    reset: () => container.runtime.clearCache(),
+  };
+}
+
+// Usage
+const playground = createPlayground();
+const output = playground.run(`
+  const crypto = require('crypto');
+  module.exports = crypto.randomUUID();
+`);
+console.log(output); // { success: true, result: "550e8400-e29b-..." }
+```
 
 ### When to use WebContainers
 
@@ -214,23 +268,26 @@ await npm.install(['react', 'react-dom']);
 
 ## Supported Node.js APIs
 
+**967 compatibility tests** verify our Node.js API coverage.
+
 ### Fully Shimmed Modules
 
-| Module | Status | Notes |
-|--------|--------|-------|
-| `fs` | Full | Sync + async + promises |
-| `path` | Full | All methods |
-| `events` | Full | EventEmitter |
-| `buffer` | Full | Via browser Buffer |
-| `stream` | Partial | Basic readable/writable |
-| `http` | Partial | Virtual server only |
-| `url` | Full | WHATWG URL API |
-| `querystring` | Full | All methods |
-| `util` | Partial | Common utilities |
-| `process` | Partial | env, cwd, platform |
-| `os` | Partial | Basic info |
-| `crypto` | Partial | Via WebCrypto |
-| `child_process` | Partial | Via just-bash |
+| Module | Tests | Coverage | Notes |
+|--------|-------|----------|-------|
+| `path` | 219 | High | POSIX paths (no Windows) |
+| `buffer` | 95 | High | All common operations |
+| `fs` | 76 | High | Sync + promises API |
+| `url` | 67 | High | WHATWG URL + legacy parser |
+| `util` | 77 | High | format, inspect, promisify |
+| `process` | 60 | High | env, cwd, hrtime, EventEmitter |
+| `events` | 50 | High | Full EventEmitter API |
+| `os` | 58 | High | Platform info (simulated) |
+| `crypto` | 57 | High | Hash, HMAC, random, sign/verify |
+| `querystring` | 52 | High | parse, stringify, escape |
+| `stream` | 44 | Medium | Readable, Writable, Transform |
+| `zlib` | 39 | High | gzip, deflate, brotli |
+| `tty` | 40 | High | ReadStream, WriteStream |
+| `perf_hooks` | 33 | High | Performance API |
 
 ### Stubbed Modules
 
@@ -238,7 +295,7 @@ These modules export empty objects or no-op functions:
 - `net`, `tls`, `dns`, `dgram`
 - `cluster`, `worker_threads`
 - `vm`, `v8`, `inspector`
-- `async_hooks`, `perf_hooks`
+- `async_hooks`
 
 ---
 
@@ -301,6 +358,82 @@ Supports both **Pages Router** and **App Router**:
   /about/page.jsx       → /about
   /users/[id]/page.jsx  → /users/:id
 ```
+
+---
+
+## Hot Module Replacement (HMR)
+
+just-node includes built-in Hot Module Replacement support for instant updates during development. When you edit files, changes appear immediately in the preview without a full page reload.
+
+### How It Works
+
+HMR is automatically enabled when using `NextDevServer` or `ViteDevServer`. The system uses:
+
+1. **VirtualFS file watching** - Detects file changes via `vfs.watch()`
+2. **postMessage API** - Communicates updates between the main page and preview iframe
+3. **React Refresh** - Preserves React component state during updates
+
+```typescript
+// HMR works automatically - just edit files and save
+vfs.writeFileSync('/app/page.tsx', updatedContent);
+// The preview iframe will automatically refresh with the new content
+```
+
+### Setup Requirements
+
+For security, the preview iframe should be sandboxed. HMR uses `postMessage` for communication, which works correctly with sandboxed iframes:
+
+```typescript
+// Create sandboxed iframe for security
+const iframe = document.createElement('iframe');
+iframe.src = '/__virtual__/3000/';
+// Sandbox restricts the iframe's capabilities - add only what you need
+iframe.sandbox = 'allow-forms allow-scripts allow-same-origin allow-popups';
+container.appendChild(iframe);
+
+// Register the iframe as HMR target after it loads
+iframe.onload = () => {
+  if (iframe.contentWindow) {
+    devServer.setHMRTarget(iframe.contentWindow);
+  }
+};
+```
+
+**Recommended sandbox permissions:**
+- `allow-scripts` - Required for JavaScript execution
+- `allow-same-origin` - Required for the service worker to intercept requests
+- `allow-forms` - If your app uses forms
+- `allow-popups` - If your app opens new windows/tabs
+
+### Manual HMR Triggering
+
+If you need to manually trigger HMR updates (e.g., after programmatic file changes):
+
+```typescript
+function triggerHMR(path: string, iframe: HTMLIFrameElement): void {
+  if (iframe.contentWindow) {
+    iframe.contentWindow.postMessage({
+      type: 'update',
+      path,
+      timestamp: Date.now(),
+      channel: 'next-hmr', // Use 'vite-hmr' for Vite
+    }, '*');
+  }
+}
+
+// After writing a file
+vfs.writeFileSync('/app/page.tsx', newContent);
+triggerHMR('/app/page.tsx', iframe);
+```
+
+### Supported File Types
+
+| File Type | HMR Behavior |
+|-----------|--------------|
+| `.jsx`, `.tsx` | React Refresh (preserves state) |
+| `.js`, `.ts` | Full module reload |
+| `.css` | Style injection (no reload) |
+| `.json` | Full page reload |
 
 ---
 

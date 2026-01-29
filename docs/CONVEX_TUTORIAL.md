@@ -308,10 +308,14 @@ await npm.install('convex', {
 ### Step 4: Deploy to Convex
 
 ```typescript
-// Create a persistent runtime instance for the CLI
-const cliRuntime = new Runtime(vfs, { cwd: '/project' });
+// Runtime instance for CLI (will be recreated for each deployment)
+let cliRuntime: Runtime | null = null;
 
 async function deployToConvex(deployKey: string): Promise<string> {
+  // CRITICAL: Create a fresh Runtime for each deployment
+  // This ensures the CLI sees the latest file changes (avoids stale closures)
+  cliRuntime = new Runtime(vfs, { cwd: '/project' });
+
   // IMPORTANT: Remove existing _generated directories
   // (CLI skips push if it finds stale generated files)
   const genPaths = ['/project/convex/_generated', '/convex/_generated'];
@@ -423,7 +427,30 @@ server.start();
 console.log(`App running at: ${bridge.getServerUrl(3000)}`);
 ```
 
-### Step 6: Use Convex in React Components
+### Step 6: Re-Deploying After Code Changes
+
+When you edit files in the `convex/` directory (schemas, functions, etc.), simply call `deployToConvex()` again:
+
+```typescript
+// User edits convex/todos.ts to add a new mutation...
+vfs.writeFileSync('/project/convex/todos.ts', updatedTodosCode);
+
+// Re-deploy - the fresh Runtime ensures changes are picked up
+const newConvexUrl = await deployToConvex('dev:my-project|token...');
+
+// The server already has NEXT_PUBLIC_CONVEX_URL set, so the app
+// will automatically use the updated functions
+```
+
+**Why this works:**
+1. `deployToConvex()` creates a **fresh Runtime** each time (avoiding stale closures)
+2. The `_generated` directories are cleared before each run
+3. The CLI bundles and pushes the current file contents
+4. Your app immediately sees the updated functions
+
+No server restart needed - the Convex client in your app will automatically sync with the new backend functions.
+
+### Step 7: Use Convex in React Components
 
 ```tsx
 // /app/page.tsx

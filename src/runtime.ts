@@ -47,6 +47,7 @@ import * as asyncHooksShim from './shims/async_hooks';
 import * as domainShim from './shims/domain';
 import * as diagnosticsChannelShim from './shims/diagnostics_channel';
 import * as sentryShim from './shims/sentry';
+import assertShim from './shims/assert';
 import { resolve as resolveExports } from 'resolve.exports';
 
 /**
@@ -210,45 +211,6 @@ export interface RequireFunction {
 }
 
 /**
- * Create a basic assert module
- */
-function createAssertModule() {
-  const assert = function (value: unknown, message?: string) {
-    if (!value) {
-      throw new Error(message || 'Assertion failed');
-    }
-  };
-  assert.ok = assert;
-  assert.strictEqual = (a: unknown, b: unknown, message?: string) => {
-    if (a !== b) throw new Error(message || `Expected ${a} to equal ${b}`);
-  };
-  assert.deepStrictEqual = (a: unknown, b: unknown, message?: string) => {
-    if (JSON.stringify(a) !== JSON.stringify(b)) {
-      throw new Error(message || `Expected ${JSON.stringify(a)} to deep equal ${JSON.stringify(b)}`);
-    }
-  };
-  assert.notStrictEqual = (a: unknown, b: unknown, message?: string) => {
-    if (a === b) throw new Error(message || `Expected ${a} to not equal ${b}`);
-  };
-  assert.throws = (fn: () => void, expected?: unknown, message?: string) => {
-    let threw = false;
-    try { fn(); } catch { threw = true; }
-    if (!threw) throw new Error(message || 'Expected function to throw');
-  };
-  assert.doesNotThrow = (fn: () => void, message?: string) => {
-    try { fn(); } catch { throw new Error(message || 'Expected function not to throw'); }
-  };
-  assert.fail = (message?: string) => { throw new Error(message || 'Assertion failed'); };
-  assert.AssertionError = class AssertionError extends Error {
-    constructor(options: { message?: string }) {
-      super(options.message || 'Assertion failed');
-      this.name = 'AssertionError';
-    }
-  };
-  return assert;
-}
-
-/**
  * Create a basic string_decoder module
  */
 function createStringDecoderModule() {
@@ -336,7 +298,7 @@ const builtinModules: Record<string, unknown> = {
   zlib: zlibShim,
   dns: dnsShim,
   child_process: childProcessShim,
-  assert: createAssertModule(),
+  assert: assertShim,
   string_decoder: createStringDecoderModule(),
   timers: createTimersModule(),
   _http_common: {},

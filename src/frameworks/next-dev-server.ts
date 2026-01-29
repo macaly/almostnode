@@ -188,9 +188,10 @@ const HMR_CLIENT_SCRIPT = `
     return hot;
   };
 
-  const channel = new BroadcastChannel('next-hmr');
-
-  channel.onmessage = async (event) => {
+  // Listen for HMR updates via postMessage (works with sandboxed iframes)
+  window.addEventListener('message', async (event) => {
+    // Filter for HMR messages only
+    if (!event.data || event.data.channel !== 'next-hmr') return;
     const { type, path, timestamp } = event.data;
 
     if (type === 'update') {
@@ -219,7 +220,7 @@ const HMR_CLIENT_SCRIPT = `
       console.log('[HMR] Full reload');
       location.reload();
     }
-  };
+  });
 
   async function handleJSUpdate(path, timestamp) {
     const normalizedPath = path.startsWith('/') ? path : '/' + path;
@@ -719,8 +720,8 @@ export class NextDevServer extends DevServer {
   /** Cleanup function for file watchers */
   private watcherCleanup: (() => void) | null = null;
 
-  /** BroadcastChannel for HMR updates to iframe */
-  private hmrChannel: BroadcastChannel | null = null;
+  /** Target window for HMR updates (iframe contentWindow) */
+  private hmrTargetWindow: Window | null = null;
 
   /** Store options for later access (e.g., env vars) */
   private options: NextDevServerOptions;
@@ -756,6 +757,14 @@ export class NextDevServer extends DevServer {
    */
   getEnv(): Record<string, string> {
     return { ...this.options.env };
+  }
+
+  /**
+   * Set the target window for HMR updates (typically iframe.contentWindow)
+   * This enables HMR to work with sandboxed iframes via postMessage
+   */
+  setHMRTarget(targetWindow: Window): void {
+    this.hmrTargetWindow = targetWindow;
   }
 
   /**
@@ -1939,10 +1948,6 @@ ${registrations}
    * Start file watching for HMR
    */
   startWatching(): void {
-    if (typeof BroadcastChannel !== 'undefined') {
-      this.hmrChannel = new BroadcastChannel('next-hmr');
-    }
-
     const watchers: Array<{ close: () => void }> = [];
 
     // Watch /pages directory
@@ -2006,8 +2011,13 @@ ${registrations}
 
     this.emitHMRUpdate(update);
 
-    if (this.hmrChannel) {
-      this.hmrChannel.postMessage(update);
+    // Send HMR update via postMessage (works with sandboxed iframes)
+    if (this.hmrTargetWindow) {
+      try {
+        this.hmrTargetWindow.postMessage({ ...update, channel: 'next-hmr' }, '*');
+      } catch (e) {
+        // Window may be closed or unavailable
+      }
     }
   }
 
@@ -2020,10 +2030,7 @@ ${registrations}
       this.watcherCleanup = null;
     }
 
-    if (this.hmrChannel) {
-      this.hmrChannel.close();
-      this.hmrChannel = null;
-    }
+    this.hmrTargetWindow = null;
 
     super.stop();
   }

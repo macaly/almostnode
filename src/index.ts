@@ -35,6 +35,16 @@ export * as perf_hooks from './shims/perf_hooks';
 export * as worker_threads from './shims/worker_threads';
 export * as esbuild from './shims/esbuild';
 export * as rollup from './shims/rollup';
+export * as assert from './shims/assert';
+
+// Demo exports
+export {
+  createConvexAppProject,
+  initConvexAppDemo,
+  startConvexAppDevServer,
+  PACKAGE_JSON as CONVEX_APP_PACKAGE_JSON,
+  DEMO_PACKAGES as CONVEX_APP_DEMO_PACKAGES,
+} from './convex-app-demo';
 
 import { VirtualFS } from './virtual-fs';
 import { Runtime, RuntimeOptions } from './runtime';

@@ -406,12 +406,6 @@ export function createFsShim(vfs: VirtualFS, getCwd?: () => string): FsShim {
       encodingOrOptions?: string | { encoding?: string | null }
     ): Buffer | string {
       const path = resolvePath(pathLike);
-
-      // Debug: Log when CLI reads convex.json or package.json
-      if (path.endsWith('convex.json') || path.endsWith('package.json')) {
-        console.log('[fs] readFileSync:', path);
-      }
-
       let encoding: string | undefined;
 
       if (typeof encodingOrOptions === 'string') {

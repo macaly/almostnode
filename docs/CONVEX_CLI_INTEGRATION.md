@@ -188,25 +188,28 @@ for (const file of generated) {
 }
 ```
 
-### 8. Persistent Runtime Instance
+### 8. Fresh Runtime for Each Deployment
 
-**IMPORTANT**: Use a module-level Runtime instance to preserve the module cache between CLI executions:
+**IMPORTANT**: Create a **fresh Runtime instance** for each deployment to ensure code changes are picked up correctly:
 
 ```typescript
-// Keep the Runtime instance at module level
 let cliRuntime: Runtime | null = null;
 
 async function deployToConvex(adminKey: string): Promise<void> {
-  // Reuse the same Runtime instance to preserve module caching
-  if (!cliRuntime) {
-    cliRuntime = new Runtime(vfs, { cwd: '/project' });
-  }
+  // CRITICAL: Always create a fresh Runtime for each deployment
+  // This ensures the CLI sees the latest file changes and avoids stale closures
+  cliRuntime = new Runtime(vfs, { cwd: '/project' });
 
   // ... run CLI with cliRuntime.execute() ...
 }
 ```
 
-This ensures that Convex's internal module state (like registered functions) persists between CLI runs.
+**Why fresh Runtime?** The Convex CLI captures file contents in closures during bundling. If you reuse the same Runtime instance, these closures may contain stale references to old file contents, causing re-deployments to push outdated code even when files have changed.
+
+This pattern ensures that:
+- Re-deploying after editing `convex/*.ts` files works correctly
+- The CLI always sees the current state of the virtual filesystem
+- Each deployment is independent and predictable
 
 ## Deploy Key Format
 
@@ -245,10 +248,10 @@ The deployment name is extracted to form the URL: `https://deployment-name.conve
 
 **Solution**: Always remove `_generated` directories before each CLI run.
 
-### Module Cache Issues
+### Re-Deployment Not Picking Up Changes
 
-**Symptom**: Functions not recognized or inconsistent behavior between runs.
+**Symptom**: You edit `convex/*.ts` files and re-deploy, but the old code is still running.
 
-**Cause**: Creating a new Runtime instance loses the module cache.
+**Cause**: Reusing the same Runtime instance causes stale closures - the CLI captures file contents during bundling, and these references don't update when files change.
 
-**Solution**: Use a persistent module-level Runtime instance (see section 8).
+**Solution**: Always create a fresh Runtime instance for each deployment (see section 8). Do NOT reuse or cache the Runtime between deployments.

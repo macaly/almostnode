@@ -196,10 +196,10 @@ const HMR_CLIENT_SCRIPT = `
     return hot;
   };
 
-  // Listen for HMR updates via BroadcastChannel
-  const channel = new BroadcastChannel('vite-hmr');
-
-  channel.onmessage = async (event) => {
+  // Listen for HMR updates via postMessage (works with sandboxed iframes)
+  window.addEventListener('message', async (event) => {
+    // Filter for HMR messages only
+    if (!event.data || event.data.channel !== 'vite-hmr') return;
     const { type, path, timestamp } = event.data;
 
     if (type === 'update') {
@@ -232,7 +232,7 @@ const HMR_CLIENT_SCRIPT = `
       console.log('[HMR] Full reload');
       location.reload();
     }
-  };
+  });
 
   // Handle JS/JSX module updates
   async function handleJSUpdate(path, timestamp) {
@@ -291,7 +291,7 @@ const HMR_CLIENT_SCRIPT = `
 export class ViteDevServer extends DevServer {
   private watcherCleanup: (() => void) | null = null;
   private options: ViteDevServerOptions;
-  private hmrChannel: BroadcastChannel | null = null;
+  private hmrTargetWindow: Window | null = null;
 
   constructor(vfs: VirtualFS, options: ViteDevServerOptions) {
     super(vfs, options);
@@ -302,6 +302,14 @@ export class ViteDevServer extends DevServer {
       jsxAutoImport: true,
       ...options,
     };
+  }
+
+  /**
+   * Set the target window for HMR updates (typically iframe.contentWindow)
+   * This enables HMR to work with sandboxed iframes via postMessage
+   */
+  setHMRTarget(targetWindow: Window): void {
+    this.hmrTargetWindow = targetWindow;
   }
 
   /**
@@ -390,11 +398,6 @@ export class ViteDevServer extends DevServer {
    * Start file watching for HMR
    */
   startWatching(): void {
-    // Create broadcast channel for HMR updates if available
-    if (typeof BroadcastChannel !== 'undefined') {
-      this.hmrChannel = new BroadcastChannel('vite-hmr');
-    }
-
     // Watch /src directory for changes
     const srcPath = this.root === '/' ? '/src' : `${this.root}/src`;
 
@@ -451,9 +454,13 @@ export class ViteDevServer extends DevServer {
     // Emit event for ServerBridge
     this.emitHMRUpdate(update);
 
-    // Broadcast to iframe via BroadcastChannel
-    if (this.hmrChannel) {
-      this.hmrChannel.postMessage(update);
+    // Send HMR update via postMessage (works with sandboxed iframes)
+    if (this.hmrTargetWindow) {
+      try {
+        this.hmrTargetWindow.postMessage({ ...update, channel: 'vite-hmr' }, '*');
+      } catch (e) {
+        // Window may be closed or unavailable
+      }
     }
   }
 
@@ -466,10 +473,7 @@ export class ViteDevServer extends DevServer {
       this.watcherCleanup = null;
     }
 
-    if (this.hmrChannel) {
-      this.hmrChannel.close();
-      this.hmrChannel = null;
-    }
+    this.hmrTargetWindow = null;
 
     super.stop();
   }
