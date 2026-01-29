@@ -285,9 +285,16 @@ export const add = mutation({
     console.log('/project contents before CLI:', vfs.readdirSync('/project'));
     console.log('/project/convex contents:', vfs.readdirSync('/project/convex'));
 
+    // Skip test if no deploy key is provided
+    const testDeployKey = process.env.CONVEX_DEPLOY_KEY;
+    if (!testDeployKey) {
+      console.log('Skipping Convex CLI test: CONVEX_DEPLOY_KEY not set');
+      return;
+    }
+
     const code = `
       // Set environment for Convex CLI
-      process.env.CONVEX_DEPLOY_KEY = 'prod:***REMOVED***|***REMOVED***';
+      process.env.CONVEX_DEPLOY_KEY = '${testDeployKey}';
 
       console.log('CWD:', process.cwd());
       console.log('/project contents:', require('fs').readdirSync('/project'));

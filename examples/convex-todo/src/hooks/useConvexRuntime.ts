@@ -67,8 +67,8 @@ const DEFAULT_FILES: ConvexFile[] = [
   { path: 'convex/tasks.ts', content: DEFAULT_TASKS },
 ];
 
-// Convex deploy key - in a real app, this would be set via environment variable
-const CONVEX_DEPLOY_KEY = 'dev:***REMOVED***|***REMOVED***';
+// Convex deploy key - set via environment variable or enter your key in the UI
+const CONVEX_DEPLOY_KEY = '';
 
 export function useConvexRuntime() {
   const [files, setFiles] = useState<ConvexFile[]>(DEFAULT_FILES);
