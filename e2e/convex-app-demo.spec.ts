@@ -14,7 +14,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should load the demo page', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Check the title
     await expect(page.locator('header h1')).toContainText('Convex App Demo');
@@ -25,7 +25,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should initialize and show Running status', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization - should show "Running" when ready
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
@@ -36,7 +36,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should show project files in console', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
@@ -50,7 +50,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should load iframe with preview', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
@@ -66,7 +66,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should render home page in iframe', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
@@ -95,7 +95,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should fetch home page via fetch API', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
 
     // Fetch the virtual URL
@@ -124,7 +124,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should serve tasks page', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
 
     // Fetch the tasks page
@@ -144,7 +144,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should serve about page', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
 
     // Fetch the about page
@@ -164,7 +164,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('should call API health route', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
 
     // Call API route
@@ -192,7 +192,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('Service Worker should be registered', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
 
     // Check if SW is registered
@@ -208,7 +208,7 @@ test.describe('Convex App Demo', () => {
   });
 
   test('refresh button should work', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });
 
     // Wait for iframe to load

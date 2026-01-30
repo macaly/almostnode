@@ -37,7 +37,7 @@ test.describe('Convex Deployment', () => {
     }
 
     // Go to the demo page
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
@@ -147,7 +147,7 @@ test.describe('Convex Deployment', () => {
   });
 
   test('should handle invalid deploy key', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
@@ -165,7 +165,7 @@ test.describe('Convex Deployment', () => {
   });
 
   test('should show error for empty deploy key', async ({ page }) => {
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
@@ -186,7 +186,7 @@ test.describe('Convex Deployment', () => {
       return;
     }
 
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
@@ -235,7 +235,7 @@ test.describe('Convex Deployment', () => {
       return;
     }
 
-    await page.goto('/demo-convex-app.html');
+    await page.goto('/examples/demo-convex-app.html');
 
     // Wait for initialization
     await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });

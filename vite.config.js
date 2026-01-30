@@ -61,7 +61,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     include: isTest ? [] : ['buffer', 'process', 'pako'],
-    exclude: ['@webcontainer/api', 'brotli-wasm', 'convex'],
+    exclude: ['brotli-wasm', 'convex'],
     esbuildOptions: { target: 'esnext' },
   },
   build: {

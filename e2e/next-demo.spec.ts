@@ -14,7 +14,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should load the demo page', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     // Check the title
     await expect(page.locator('h1')).toContainText('Next.js');
@@ -25,7 +25,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should initialize and enable Start Preview button', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -48,7 +48,7 @@ test.describe('Next.js Demo with Service Worker', () => {
       }
     });
 
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -87,7 +87,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should show console output', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -98,7 +98,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should load editor with file content', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -112,7 +112,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should switch between files', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -129,7 +129,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should navigate between pages in preview', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -163,7 +163,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should call API route', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
 
@@ -196,7 +196,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should serve static files from public directory', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
 
@@ -217,7 +217,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('Service Worker should be registered', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
 
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
 
@@ -240,7 +240,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should fetch virtual URL via fetch API', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -271,7 +271,7 @@ test.describe('Next.js Demo with Service Worker', () => {
   });
 
   test('should render dynamic route /users/[id]', async ({ page }) => {
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -300,7 +300,7 @@ test.describe('Next.js Demo with Service Worker', () => {
       console.log(text);
     });
 
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -351,7 +351,7 @@ test.describe('Next.js Demo with Service Worker', () => {
       console.log(`[Console ${msg.type()}]`, msg.text());
     });
 
-    await page.goto('/next-demo.html');
+    await page.goto('/examples/next-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });

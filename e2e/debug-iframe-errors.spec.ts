@@ -15,7 +15,7 @@ test('Debug iframe JavaScript errors', async ({ page }) => {
     console.error('[Page Error]', error.message);
   });
 
-  await page.goto('/demo-convex-app.html');
+  await page.goto('/examples/demo-convex-app.html');
 
   // Wait for initialization
   await expect(page.locator('#statusText')).toContainText('Running', { timeout: 30000 });

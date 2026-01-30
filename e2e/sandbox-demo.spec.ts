@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Sandbox Demo', () => {
   test('should connect to sandbox and execute code', async ({ page }) => {
     // Navigate to sandbox demo
-    await page.goto('http://localhost:5173/sandbox-next-demo.html');
+    await page.goto('http://localhost:5173/examples/sandbox-next-demo.html');
 
     // Wait for page to load
     await expect(page.locator('h1')).toContainText('Sandbox Mode');
@@ -35,7 +35,7 @@ test.describe('Sandbox Demo', () => {
   });
 
   test('should show cross-origin isolation', async ({ page }) => {
-    await page.goto('http://localhost:5173/sandbox-next-demo.html');
+    await page.goto('http://localhost:5173/examples/sandbox-next-demo.html');
 
     // Connect to sandbox
     await page.click('#init-btn');

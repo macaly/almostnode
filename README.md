@@ -681,7 +681,7 @@ npm run test:e2e
 npm run dev
 ```
 
-Open `http://localhost:5173/next-demo.html` to see the Next.js demo.
+Open `http://localhost:5173/examples/next-demo.html` to see the Next.js demo.
 
 ---
 

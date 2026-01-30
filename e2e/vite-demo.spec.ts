@@ -14,7 +14,7 @@ test.describe('Vite Demo with Service Worker', () => {
   });
 
   test('should load the demo page', async ({ page }) => {
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
 
     // Check the title
     await expect(page.locator('h1')).toContainText('Vite Demo');
@@ -25,7 +25,7 @@ test.describe('Vite Demo with Service Worker', () => {
   });
 
   test('should initialize and enable Start Preview button', async ({ page }) => {
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -48,7 +48,7 @@ test.describe('Vite Demo with Service Worker', () => {
       }
     });
 
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -123,7 +123,7 @@ test.describe('Vite Demo with Service Worker', () => {
   });
 
   test('should show console output', async ({ page }) => {
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -134,7 +134,7 @@ test.describe('Vite Demo with Service Worker', () => {
   });
 
   test('should load editor with file content', async ({ page }) => {
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -148,7 +148,7 @@ test.describe('Vite Demo with Service Worker', () => {
   });
 
   test('should switch between files', async ({ page }) => {
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -164,7 +164,7 @@ test.describe('Vite Demo with Service Worker', () => {
   });
 
   test('Service Worker should be registered', async ({ page }) => {
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
 
     // Wait for initialization
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
@@ -191,7 +191,7 @@ test.describe('Vite Demo with Service Worker', () => {
     page.on('console', (msg) => console.log(`[Console ${msg.type()}]`, msg.text()));
 
     // Go to demo and start the server to register SW
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -212,7 +212,7 @@ test.describe('Vite Demo with Service Worker', () => {
 
   test('SW test mode should return hardcoded response', async ({ page }) => {
     // Go to demo and start the server to register SW
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -274,7 +274,7 @@ test.describe('Vite Demo with Service Worker', () => {
     });
 
     // First, go to demo and start the server
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -324,7 +324,7 @@ test.describe('Vite Demo with Service Worker', () => {
 
   test('should fetch virtual URL via fetch API', async ({ page }) => {
     // First, go to demo and start the server
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -355,7 +355,7 @@ test.describe('Vite Demo with Service Worker', () => {
 
   test('should access virtual URL directly', async ({ page }) => {
     // First, go to demo and start the server
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -403,7 +403,7 @@ test.describe('Vite Demo with Service Worker', () => {
     });
 
     // Go to demo and start server
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
@@ -503,7 +503,7 @@ test.describe('Vite Demo with Service Worker', () => {
     });
 
     // Go to demo and start server
-    await page.goto('/vite-demo.html');
+    await page.goto('/examples/vite-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });

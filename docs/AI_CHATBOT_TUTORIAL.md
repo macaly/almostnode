@@ -45,7 +45,7 @@ All code runs client-side - no backend server required.
    npm run dev
    ```
 
-2. Open `http://localhost:5173/demo-ai-chatbot.html`
+2. Open `http://localhost:5173/examples/demo-ai-chatbot.html`
 
 3. Enter your OpenAI API key and click "Connect"
 
