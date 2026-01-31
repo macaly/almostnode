@@ -6,6 +6,7 @@ A lightweight, browser-native Node.js runtime environment. Run Node.js code, ins
 
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-green.svg)](https://nodejs.org/)
 
 ---
 
@@ -20,6 +21,15 @@ A lightweight, browser-native Node.js runtime environment. Run Node.js code, ins
 - **Service Worker Architecture** - Intercepts requests for seamless dev experience
 - **Optional Web Worker Support** - Offload code execution to a Web Worker for improved UI responsiveness
 - **Secure by Default** - Cross-origin sandbox support for running untrusted code safely
+
+---
+
+## Requirements
+
+- **Node.js 20+** - Required for development and building
+- **Modern browser** - Chrome, Firefox, Safari, or Edge with ES2020+ support
+
+> **Note:** just-node runs in the browser and emulates Node.js 20 APIs. The Node.js requirement is only for development tooling (Vite, Vitest, TypeScript).
 
 ---
 
