@@ -629,9 +629,11 @@ iframe.onload = () => {
 
 **Recommended sandbox permissions:**
 - `allow-scripts` - Required for JavaScript execution
-- `allow-same-origin` - Required for the service worker to intercept requests
+- `allow-same-origin` - Allows the iframe to access cookies, localStorage, and IndexedDB (only add if your app needs these; omit for better isolation)
 - `allow-forms` - If your app uses forms
 - `allow-popups` - If your app opens new windows/tabs
+
+> **Note:** The service worker intercepts `/__virtual__/` requests at the origin level, not the iframe level. The `allow-same-origin` attribute does NOT affect service worker functionality. For maximum security isolation, consider using **cross-origin sandbox mode** (see below) which doesn't use `allow-same-origin`.
 
 ### Manual HMR Triggering
 
