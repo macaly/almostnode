@@ -5,27 +5,44 @@
  * to provide browser-enforced isolation from the main application.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { fileURLToPath } from 'url';
-
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore - import.meta.url is available in ESM
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 /**
  * Get the contents of the service worker file.
- * Returns null if the file is not found (e.g., running in browser).
+ * Returns null if running in browser or file is not found.
+ *
+ * Note: This function only works in Node.js. In the browser, it returns null.
  */
 function getServiceWorkerContent(): string | null {
+  // Only works in Node.js - check for presence of require
+  if (typeof require === 'undefined') {
+    return null;
+  }
+
   try {
+    // Dynamic requires to avoid bundling Node.js modules in browser build
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const fs = require('fs');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require('path');
+
+    // __dirname equivalent for ESM
+    let dirname: string;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const url = require('url');
+      // @ts-ignore - import.meta.url is available in ESM
+      dirname = path.dirname(url.fileURLToPath(import.meta.url));
+    } catch {
+      // Fallback for CommonJS
+      dirname = __dirname;
+    }
+
     // Try dist directory first (when running from built package)
-    let swPath = path.join(__dirname, '__sw__.js');
+    let swPath = path.join(dirname, '__sw__.js');
     if (fs.existsSync(swPath)) {
       return fs.readFileSync(swPath, 'utf-8');
     }
     // Try relative to src (when running from source)
-    swPath = path.join(__dirname, '../dist/__sw__.js');
+    swPath = path.join(dirname, '../dist/__sw__.js');
     if (fs.existsSync(swPath)) {
       return fs.readFileSync(swPath, 'utf-8');
     }
