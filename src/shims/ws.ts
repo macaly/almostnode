@@ -168,8 +168,11 @@ export class WebSocket extends EventEmitter {
   }
 
   private _connectNative(): void {
-    // Check that the browser's native WebSocket is available and is not our own shim
-    const NativeWS = typeof globalThis.WebSocket === 'function' && globalThis.WebSocket !== (WebSocket as any)
+    // Check that the browser's native WebSocket is available and is not our own shim.
+    // Only use native WebSocket in a real browser — Node.js 21+ has native WebSocket
+    // but it connects to real servers, which breaks tests and isn't what the shim needs.
+    const isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
+    const NativeWS = isBrowser && typeof globalThis.WebSocket === 'function' && globalThis.WebSocket !== (WebSocket as any)
       ? globalThis.WebSocket
       : null;
 

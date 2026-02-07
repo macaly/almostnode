@@ -11,8 +11,11 @@ import { createHash } from './crypto';
 // Save the browser's native WebSocket at module load time, BEFORE any CLI bundle
 // can overwrite it (e.g. Convex CLI does `globalThis.WebSocket = bundledWs`).
 // This ensures our WebSocket bridge always uses the real browser implementation.
+// Only capture in a real browser — Node.js 21+ has native WebSocket but it connects
+// to real servers, which isn't what the shim needs.
+const _isBrowser = typeof window !== 'undefined' && typeof window.document !== 'undefined';
 const _BrowserWebSocket: typeof globalThis.WebSocket | null =
-  typeof globalThis.WebSocket === 'function' ? globalThis.WebSocket : null;
+  _isBrowser && typeof globalThis.WebSocket === 'function' ? globalThis.WebSocket : null;
 
 export type RequestListener = (req: IncomingMessage, res: ServerResponse) => void;
 
