@@ -4,8 +4,10 @@ import wasm from 'vite-plugin-wasm';
 import topLevelAwait from 'vite-plugin-top-level-await';
 
 const isTest = process.env.VITEST === 'true';
+const isBuild = process.argv.includes('build');
 
 export default defineConfig({
+  base: isBuild ? '/almostnode/' : '/',
   test: {
     // Exclude e2e tests - they should be run with `npm run test:e2e`
     exclude: [
