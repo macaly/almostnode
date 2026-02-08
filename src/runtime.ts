@@ -866,6 +866,10 @@ export class Runtime {
     // Initialize esbuild shim with VFS for file access
     esbuildShim.setVFS(vfs);
 
+    // Polyfill Error.captureStackTrace/prepareStackTrace for Safari/WebKit
+    // (V8-specific API used by Express's depd and other npm packages)
+    this.setupStackTracePolyfill();
+
     // Polyfill TextDecoder to handle base64/base64url/hex gracefully
     // (Some CLI tools incorrectly try to use TextDecoder for these)
     this.setupTextDecoderPolyfill();
@@ -939,6 +943,104 @@ export class Runtime {
     }
 
     globalThis.TextDecoder = PolyfillTextDecoder as unknown as typeof TextDecoder;
+  }
+
+  /**
+   * Polyfill V8's Error.captureStackTrace and Error.prepareStackTrace for Safari/WebKit.
+   * Express's `depd` and other npm packages use these V8-specific APIs which don't
+   * exist in Safari, causing "callSite.getFileName is not a function" errors.
+   */
+  private setupStackTracePolyfill(): void {
+    // Only polyfill if not already available (i.e., not V8/Chrome)
+    if (typeof (Error as any).captureStackTrace === 'function') return;
+
+    // Parse a stack trace string into structured frames
+    function parseStack(stack: string): Array<{fn: string, file: string, line: number, col: number}> {
+      if (!stack) return [];
+      const frames: Array<{fn: string, file: string, line: number, col: number}> = [];
+      const lines = stack.split('\n');
+
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line || line.startsWith('Error') || line.startsWith('TypeError')) continue;
+
+        let fn = '', file = '', lineNo = 0, colNo = 0;
+
+        // Safari format: "functionName@file:line:col" or "@file:line:col"
+        const safariMatch = line.match(/^(.*)@(.*?):(\d+):(\d+)$/);
+        if (safariMatch) {
+          fn = safariMatch[1] || '';
+          file = safariMatch[2];
+          lineNo = parseInt(safariMatch[3], 10);
+          colNo = parseInt(safariMatch[4], 10);
+          frames.push({ fn, file, line: lineNo, col: colNo });
+          continue;
+        }
+
+        // Chrome format: "at functionName (file:line:col)" or "at file:line:col"
+        const chromeMatch = line.match(/^at\s+(?:(.+?)\s+\()?(.*?):(\d+):(\d+)\)?$/);
+        if (chromeMatch) {
+          fn = chromeMatch[1] || '';
+          file = chromeMatch[2];
+          lineNo = parseInt(chromeMatch[3], 10);
+          colNo = parseInt(chromeMatch[4], 10);
+          frames.push({ fn, file, line: lineNo, col: colNo });
+          continue;
+        }
+      }
+      return frames;
+    }
+
+    // Create a mock CallSite object from a parsed frame
+    function createCallSite(frame: {fn: string, file: string, line: number, col: number}) {
+      return {
+        getFileName: () => frame.file || null,
+        getLineNumber: () => frame.line || null,
+        getColumnNumber: () => frame.col || null,
+        getFunctionName: () => frame.fn || null,
+        getMethodName: () => frame.fn || null,
+        getTypeName: () => null,
+        getThis: () => undefined,
+        getFunction: () => undefined,
+        getEvalOrigin: () => undefined,
+        isNative: () => false,
+        isConstructor: () => false,
+        isToplevel: () => !frame.fn,
+        isEval: () => false,
+        toString: () => frame.fn
+          ? `${frame.fn} (${frame.file}:${frame.line}:${frame.col})`
+          : `${frame.file}:${frame.line}:${frame.col}`,
+      };
+    }
+
+    // Polyfill Error.captureStackTrace
+    (Error as any).captureStackTrace = function(target: any, constructorOpt?: Function) {
+      const err = new Error();
+      const stack = err.stack || '';
+
+      // If prepareStackTrace is set, provide structured call sites
+      if (typeof (Error as any).prepareStackTrace === 'function') {
+        const frames = parseStack(stack);
+        // Skip frames up to and including constructorOpt if provided
+        let startIdx = 0;
+        if (constructorOpt && constructorOpt.name) {
+          for (let i = 0; i < frames.length; i++) {
+            if (frames[i].fn === constructorOpt.name) {
+              startIdx = i + 1;
+              break;
+            }
+          }
+        }
+        const callSites = frames.slice(startIdx).map(createCallSite);
+        try {
+          target.stack = (Error as any).prepareStackTrace(target, callSites);
+        } catch {
+          target.stack = stack;
+        }
+      } else {
+        target.stack = stack;
+      }
+    };
   }
 
   /**
