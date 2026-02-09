@@ -12,26 +12,28 @@ export type { Stats, FSWatcher, WatchListener, WatchEventType };
 const _decoder = new TextDecoder();
 const _encoder = new TextEncoder();
 
+export type PathLike = string | URL;
+
 export interface FsShim {
-  readFileSync(path: string): Buffer;
-  readFileSync(path: string, encoding: 'utf8' | 'utf-8'): string;
-  readFileSync(path: string, options: { encoding: 'utf8' | 'utf-8' }): string;
-  readFileSync(path: string, options: { encoding?: null }): Buffer;
-  writeFileSync(path: string, data: string | Uint8Array): void;
-  existsSync(path: string): boolean;
-  mkdirSync(path: string, options?: { recursive?: boolean }): void;
-  readdirSync(path: string): string[];
-  readdirSync(path: string, options: { withFileTypes: true }): Dirent[];
-  readdirSync(path: string, options?: { withFileTypes?: boolean; encoding?: string } | string): string[] | Dirent[];
-  statSync(path: string): Stats;
-  lstatSync(path: string): Stats;
+  readFileSync(path: PathLike): Buffer;
+  readFileSync(path: PathLike, encoding: 'utf8' | 'utf-8'): string;
+  readFileSync(path: PathLike, options: { encoding: 'utf8' | 'utf-8' }): string;
+  readFileSync(path: PathLike, options: { encoding?: null }): Buffer;
+  writeFileSync(path: PathLike, data: string | Uint8Array): void;
+  existsSync(path: PathLike): boolean;
+  mkdirSync(path: PathLike, options?: { recursive?: boolean }): void;
+  readdirSync(path: PathLike): string[];
+  readdirSync(path: PathLike, options: { withFileTypes: true }): Dirent[];
+  readdirSync(path: PathLike, options?: { withFileTypes?: boolean; encoding?: string } | string): string[] | Dirent[];
+  statSync(path: PathLike): Stats;
+  lstatSync(path: PathLike): Stats;
   fstatSync(fd: number): Stats;
-  unlinkSync(path: string): void;
-  rmdirSync(path: string): void;
-  renameSync(oldPath: string, newPath: string): void;
-  realpathSync(path: string): string;
-  accessSync(path: string, mode?: number): void;
-  copyFileSync(src: string, dest: string): void;
+  unlinkSync(path: PathLike): void;
+  rmdirSync(path: PathLike): void;
+  renameSync(oldPath: PathLike, newPath: PathLike): void;
+  realpathSync(path: PathLike): string;
+  accessSync(path: PathLike, mode?: number): void;
+  copyFileSync(src: PathLike, dest: PathLike): void;
   openSync(path: string, flags: string | number, mode?: number): number;
   closeSync(fd: number): void;
   readSync(fd: number, buffer: Buffer | Uint8Array, offset: number, length: number, position: number | null): number;
@@ -58,20 +60,20 @@ export interface FsShim {
 }
 
 export interface FsPromises {
-  readFile(path: string): Promise<Buffer>;
-  readFile(path: string, encoding: 'utf8' | 'utf-8'): Promise<string>;
-  readFile(path: string, options: { encoding: 'utf8' | 'utf-8' }): Promise<string>;
-  writeFile(path: string, data: string | Uint8Array): Promise<void>;
-  stat(path: string): Promise<Stats>;
-  lstat(path: string): Promise<Stats>;
-  readdir(path: string): Promise<string[]>;
-  mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
-  unlink(path: string): Promise<void>;
-  rmdir(path: string): Promise<void>;
-  rename(oldPath: string, newPath: string): Promise<void>;
-  access(path: string, mode?: number): Promise<void>;
-  realpath(path: string): Promise<string>;
-  copyFile(src: string, dest: string): Promise<void>;
+  readFile(path: PathLike): Promise<Buffer>;
+  readFile(path: PathLike, encoding: 'utf8' | 'utf-8'): Promise<string>;
+  readFile(path: PathLike, options: { encoding: 'utf8' | 'utf-8' }): Promise<string>;
+  writeFile(path: PathLike, data: string | Uint8Array): Promise<void>;
+  stat(path: PathLike): Promise<Stats>;
+  lstat(path: PathLike): Promise<Stats>;
+  readdir(path: PathLike): Promise<string[]>;
+  mkdir(path: PathLike, options?: { recursive?: boolean }): Promise<void>;
+  unlink(path: PathLike): Promise<void>;
+  rmdir(path: PathLike): Promise<void>;
+  rename(oldPath: PathLike, newPath: PathLike): Promise<void>;
+  access(path: PathLike, mode?: number): Promise<void>;
+  realpath(path: PathLike): Promise<string>;
+  copyFile(src: PathLike, dest: PathLike): Promise<void>;
 }
 
 export interface FsConstants {

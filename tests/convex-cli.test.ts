@@ -208,11 +208,12 @@ export const add = mutation({
     try {
       runtime.execute(code, '/project/cli-test.js');
       console.log('CLI executed successfully');
-    } catch (error) {
-      console.log('CLI execution error:', error.message);
+    } catch (error: unknown) {
+      const err = error as Error;
+      console.log('CLI execution error:', err.message);
       // Log the stack trace to understand what's missing
-      if (error.stack) {
-        console.log('Stack trace:', error.stack.split('\n').slice(0, 10).join('\n'));
+      if (err.stack) {
+        console.log('Stack trace:', err.stack.split('\n').slice(0, 10).join('\n'));
       }
       // Expected - CLI has many Node.js dependencies we don't fully support yet
       // This test documents what's currently blocking
@@ -314,9 +315,9 @@ export const add = mutation({
       await new Promise(resolve => setTimeout(resolve, 5000));
 
       console.log('Wait complete');
-    } catch (error) {
+    } catch (error: unknown) {
       // Some errors are expected (process.exit, stack overflow in watcher)
-      console.log('CLI completed with:', error.message);
+      console.log('CLI completed with:', (error as Error).message);
     }
 
     // Verify deployment was provisioned

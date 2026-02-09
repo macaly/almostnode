@@ -159,10 +159,9 @@ export function deprecate<T extends Function>(
   return deprecated as unknown as T;
 }
 
-export function promisify<T>(
-  fn: (...args: [...unknown[], (err: Error | null, result: T) => void]) => void
-): (...args: unknown[]) => Promise<T> {
-  return (...args: unknown[]) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function promisify<T>(fn: (...args: any[]) => void): (...args: any[]) => Promise<T> {
+  return (...args: any[]) => {
     return new Promise((resolve, reject) => {
       fn(...args, (err: Error | null, result: T) => {
         if (err) {
@@ -175,10 +174,9 @@ export function promisify<T>(
   };
 }
 
-export function callbackify<T>(
-  fn: (...args: unknown[]) => Promise<T>
-): (...args: [...unknown[], (err: Error | null, result: T) => void]) => void {
-  return (...args: unknown[]) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function callbackify<T>(fn: (...args: any[]) => Promise<T>): (...args: any[]) => void {
+  return (...args: any[]) => {
     const callback = args.pop() as (err: Error | null, result: T) => void;
     fn(...args)
       .then((result) => callback(null, result))

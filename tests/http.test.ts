@@ -44,7 +44,7 @@ describe('http module', () => {
 
       const body = await new Promise<string>((resolve) => {
         const chunks: Buffer[] = [];
-        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('data', (chunk: unknown) => chunks.push(chunk as Buffer));
         req.on('end', () => {
           resolve(Buffer.concat(chunks).toString());
         });
@@ -217,7 +217,7 @@ describe('http module', () => {
     it('should handle POST with body', async () => {
       server = createServer((req, res) => {
         const chunks: Buffer[] = [];
-        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('data', (chunk: unknown) => chunks.push(chunk as Buffer));
         req.on('end', () => {
           const body = Buffer.concat(chunks).toString();
           res.setHeader('Content-Type', 'application/json');
@@ -244,9 +244,9 @@ describe('http module', () => {
       let requestReceived = false;
 
       server = createServer();
-      server.on('request', (req, res) => {
+      server.on('request', (req: unknown, res: unknown) => {
         requestReceived = true;
-        res.end('OK');
+        (res as any).end('OK');
       });
 
       await new Promise<void>((resolve) => server.listen(3005, resolve));
@@ -432,7 +432,7 @@ describe('http module', () => {
     it('should handle POST requests in fetch handler', async () => {
       server = createServer((req, res) => {
         const chunks: Buffer[] = [];
-        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('data', (chunk: unknown) => chunks.push(chunk as Buffer));
         req.on('end', () => {
           const body = Buffer.concat(chunks).toString();
           res.setHeader('Content-Type', 'application/json');
@@ -680,7 +680,7 @@ describe('HTTP Client', () => {
       }, 'https');
 
       const error = await new Promise<Error>((resolve) => {
-        req.on('error', (err: Error) => resolve(err));
+        req.on('error', (err: unknown) => resolve(err as Error));
         req.end();
       });
 

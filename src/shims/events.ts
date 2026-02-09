@@ -3,7 +3,8 @@
  * Basic event emitter implementation for browser environment
  */
 
-export type EventListener = (...args: unknown[]) => void;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type EventListener = (...args: any[]) => void;
 
 // Symbol for storing events on arbitrary objects (like Express app function)
 const kEvents = Symbol('events');

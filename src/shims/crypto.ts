@@ -63,7 +63,7 @@ class Hash {
     this.algorithm = normalizeHashAlgorithm(algorithm);
   }
 
-  update(data: string | Buffer, encoding?: string): this {
+  update(data: string | Buffer | Uint8Array, encoding?: string): this {
     let buffer: Buffer;
     if (typeof data === 'string') {
       if (encoding === 'base64') {
@@ -72,7 +72,7 @@ class Hash {
         buffer = Buffer.from(data);
       }
     } else {
-      buffer = data;
+      buffer = Buffer.from(data);
     }
     this.data.push(buffer);
     return this;
@@ -115,7 +115,7 @@ class Hmac {
     this.key = typeof key === 'string' ? Buffer.from(key) : key;
   }
 
-  update(data: string | Buffer, encoding?: string): this {
+  update(data: string | Buffer | Uint8Array, encoding?: string): this {
     const buffer = typeof data === 'string' ? Buffer.from(data) : data;
     this.data.push(buffer);
     return this;
@@ -362,7 +362,7 @@ class Sign extends EventEmitter {
     this.algorithm = algorithm;
   }
 
-  update(data: string | Buffer, encoding?: string): this {
+  update(data: string | Buffer | Uint8Array, encoding?: string): this {
     const buffer = typeof data === 'string' ? Buffer.from(data) : data;
     this.data.push(buffer);
     return this;
@@ -392,7 +392,7 @@ class Verify extends EventEmitter {
     this.algorithm = algorithm;
   }
 
-  update(data: string | Buffer, encoding?: string): this {
+  update(data: string | Buffer | Uint8Array, encoding?: string): this {
     const buffer = typeof data === 'string' ? Buffer.from(data) : data;
     this.data.push(buffer);
     return this;
@@ -485,7 +485,7 @@ export function createPrivateKey(key: KeyLike): KeyObject {
 // Utility functions
 // ============================================================================
 
-export function timingSafeEqual(a: Buffer, b: Buffer): boolean {
+export function timingSafeEqual(a: Buffer | Uint8Array, b: Buffer | Uint8Array): boolean {
   if (a.length !== b.length) {
     return false;
   }

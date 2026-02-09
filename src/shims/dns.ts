@@ -16,6 +16,11 @@ export function lookup(
 ): void;
 export function lookup(
   hostname: string,
+  options: { family?: number; all?: true },
+  callback: LookupAllCallback
+): void;
+export function lookup(
+  hostname: string,
   options: { family?: number; all?: boolean },
   callback: LookupCallback | LookupAllCallback
 ): void;

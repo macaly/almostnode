@@ -96,7 +96,7 @@ describe('dns module (Node.js compat)', () => {
 
     it('lookup({ all: true }) should return address objects', async () => {
       const addresses = await new Promise<Array<{ address: string; family: number }>>((resolvePromise) => {
-        lookup('localhost', { all: true }, (err, allAddresses) => {
+        lookup('localhost', { all: true }, (err: any, allAddresses: any) => {
           expect(err).toBeNull();
           resolvePromise(allAddresses || []);
         });

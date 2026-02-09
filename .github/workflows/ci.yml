@@ -30,7 +30,7 @@ jobs:
         run: npm run build:lib
 
       - name: Run type check
-        run: npm run build:types
+        run: npm run type-check
 
       - name: Run tests
         run: npm run test:run

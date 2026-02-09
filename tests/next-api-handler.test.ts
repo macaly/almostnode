@@ -241,7 +241,7 @@ describe('createStreamingMockResponse', () => {
   it('streams multiple chunks via write()', () => {
     const onStart = vi.fn();
     const chunks: string[] = [];
-    const onChunk = vi.fn((chunk: string) => chunks.push(chunk));
+    const onChunk = vi.fn((chunk: string | Uint8Array) => chunks.push(chunk as string));
     const onEnd = vi.fn();
 
     const res = createStreamingMockResponse(onStart, onChunk, onEnd);
@@ -283,7 +283,7 @@ describe('createStreamingMockResponse', () => {
   it('end() with data sends chunk then ends', () => {
     const chunks: string[] = [];
     const onStart = vi.fn();
-    const onChunk = vi.fn((chunk: string) => chunks.push(chunk));
+    const onChunk = vi.fn((chunk: string | Uint8Array) => chunks.push(chunk as string));
     const onEnd = vi.fn();
 
     const res = createStreamingMockResponse(onStart, onChunk, onEnd);

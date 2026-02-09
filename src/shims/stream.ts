@@ -136,13 +136,13 @@ export class Readable extends EventEmitter {
     return this;
   }
 
-  pipe<T extends Writable>(destination: T): T {
+  pipe<T extends Writable | Duplex>(destination: T): T {
     this.on('data', (chunk: unknown) => {
-      destination.write(chunk as Uint8Array | string);
+      (destination as Writable).write(chunk as Uint8Array | string);
     });
 
     this.on('end', () => {
-      destination.end();
+      (destination as Writable).end();
     });
 
     this.resume();
@@ -385,9 +385,9 @@ export class Transform extends Duplex {
   }
 
   _transform(
-    chunk: Buffer,
+    chunk: Buffer | Uint8Array,
     encoding: string,
-    callback: (error?: Error | null, data?: Buffer) => void
+    callback: (error?: Error | null, data?: Buffer | Uint8Array) => void
   ): void {
     // Default: pass through
     callback(null, chunk);

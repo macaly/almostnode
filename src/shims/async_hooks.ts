@@ -5,7 +5,8 @@
 export class AsyncResource {
   constructor(_type: string, _options?: object) {}
 
-  runInAsyncScope<T>(fn: (...args: unknown[]) => T, thisArg?: unknown, ...args: unknown[]): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  runInAsyncScope<T>(fn: (...args: any[]) => T, thisArg?: unknown, ...args: any[]): T {
     return fn.apply(thisArg, args);
   }
 
@@ -13,7 +14,8 @@ export class AsyncResource {
   asyncId(): number { return 0; }
   triggerAsyncId(): number { return 0; }
 
-  static bind<T extends (...args: unknown[]) => unknown>(fn: T, _type?: string): T {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  static bind<T extends (...args: any[]) => any>(fn: T, _type?: string): T {
     return fn;
   }
 }

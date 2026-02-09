@@ -34,7 +34,7 @@ describe('async_hooks module (Node.js compat)', () => {
     it('should construct and run function in async scope', () => {
       const resource = new AsyncResource('test');
       const thisObj = { value: 2 };
-      const result = resource.runInAsyncScope(function (a: number, b: number) {
+      const result = resource.runInAsyncScope(function (this: { value: number }, a: number, b: number) {
         return this.value + a + b;
       }, thisObj, 3, 4);
       assert.strictEqual(result, 9);

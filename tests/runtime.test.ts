@@ -403,8 +403,8 @@ describe('Runtime', () => {
       `);
 
       // Both should reference the same cached module
-      expect(result.exports.same).toBe(true);
-      expect(result.exports.bCount).toBe(2); // Incremented twice
+      expect((result.exports as any).same).toBe(true);
+      expect((result.exports as any).bCount).toBe(2); // Incremented twice
     });
 
     it('should handle resolution cache for non-existent modules', () => {

@@ -43,8 +43,8 @@ describe('chokidar shim', () => {
 
       // Set up listener before watching
       const watcher = chokidar.watch('/test', { ignoreInitial: false });
-      watcher.on('add', (path) => {
-        addedFiles.push(path);
+      watcher.on('add', (path: unknown) => {
+        addedFiles.push(path as string);
       });
 
       // Wait for ready
@@ -63,8 +63,8 @@ describe('chokidar shim', () => {
       const addedFiles: string[] = [];
       const watcher = chokidar.watch('/test', { ignoreInitial: true });
 
-      watcher.on('add', (path) => {
-        addedFiles.push(path);
+      watcher.on('add', (path: unknown) => {
+        addedFiles.push(path as string);
       });
 
       // Wait for ready
@@ -82,8 +82,8 @@ describe('chokidar shim', () => {
       const changedFiles: string[] = [];
       const watcher = chokidar.watch('/test', { ignoreInitial: true });
 
-      watcher.on('change', (path) => {
-        changedFiles.push(path);
+      watcher.on('change', (path: unknown) => {
+        changedFiles.push(path as string);
       });
 
       // Wait for ready
@@ -102,8 +102,8 @@ describe('chokidar shim', () => {
       const addedFiles: string[] = [];
       const watcher = chokidar.watch('/test', { ignoreInitial: true });
 
-      watcher.on('add', (path) => {
-        addedFiles.push(path);
+      watcher.on('add', (path: unknown) => {
+        addedFiles.push(path as string);
       });
 
       // Wait for ready
@@ -124,8 +124,8 @@ describe('chokidar shim', () => {
       const unlinkedFiles: string[] = [];
       const watcher = chokidar.watch('/test', { ignoreInitial: true });
 
-      watcher.on('unlink', (path) => {
-        unlinkedFiles.push(path);
+      watcher.on('unlink', (path: unknown) => {
+        unlinkedFiles.push(path as string);
       });
 
       // Wait for ready
@@ -146,8 +146,8 @@ describe('chokidar shim', () => {
       const addedFiles: string[] = [];
       const watcher = chokidar.watch('/test', { ignoreInitial: true });
 
-      watcher.on('add', (path) => {
-        addedFiles.push(path);
+      watcher.on('add', (path: unknown) => {
+        addedFiles.push(path as string);
       });
 
       // Wait for ready
@@ -169,8 +169,8 @@ describe('chokidar shim', () => {
       const changedFiles: string[] = [];
       const watcher = chokidar.watch('/test', { ignoreInitial: true });
 
-      watcher.on('change', (path) => {
-        changedFiles.push(path);
+      watcher.on('change', (path: unknown) => {
+        changedFiles.push(path as string);
       });
 
       // Wait for ready
@@ -204,8 +204,8 @@ describe('chokidar shim', () => {
         ignored: '/test/ignored.txt',
       });
 
-      watcher.on('add', (path) => {
-        addedFiles.push(path);
+      watcher.on('add', (path: unknown) => {
+        addedFiles.push(path as string);
       });
 
       // Wait for ready
@@ -229,8 +229,8 @@ describe('chokidar shim', () => {
         ignored: /\.log$/,
       });
 
-      watcher.on('add', (path) => {
-        addedFiles.push(path);
+      watcher.on('add', (path: unknown) => {
+        addedFiles.push(path as string);
       });
 
       // Wait for ready

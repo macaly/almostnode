@@ -200,9 +200,9 @@ assert.ok = function ok(value: unknown, message?: string | Error): asserts value
 /**
  * Tests strict equality (===)
  */
-assert.strictEqual = function strictEqual<T>(
-  actual: T,
-  expected: T,
+assert.strictEqual = function strictEqual(
+  actual: unknown,
+  expected: unknown,
   message?: string | Error
 ): void {
   if (actual !== expected) {
@@ -222,9 +222,9 @@ assert.strictEqual = function strictEqual<T>(
 /**
  * Tests strict inequality (!==)
  */
-assert.notStrictEqual = function notStrictEqual<T>(
-  actual: T,
-  expected: T,
+assert.notStrictEqual = function notStrictEqual(
+  actual: unknown,
+  expected: unknown,
   message?: string | Error
 ): void {
   if (actual === expected) {

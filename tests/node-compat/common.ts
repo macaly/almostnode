@@ -39,7 +39,7 @@ export const assert = {
     if (expected instanceof RegExp) {
       expect(fn, message).toThrow(expected);
     } else if (typeof expected === 'function') {
-      expect(fn, message).toThrow(expected);
+      expect(fn, message).toThrow(expected as any);
     } else if (expected && typeof expected === 'object' && 'code' in expected) {
       // Node.js style error object with code
       try {

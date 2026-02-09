@@ -109,7 +109,7 @@ describe('util module (Node.js compat)', () => {
 
       // Skipped: Known limitation - when first arg isn't a string, our shim doesn't include it
       it.skip('should handle no format string', () => {
-        const result = format({ a: 1 });
+        const result = format({ a: 1 } as any);
         expect(result).toContain('a');
       });
     });
@@ -338,7 +338,7 @@ describe('util module (Node.js compat)', () => {
 
       const callbackified = callbackify(asyncFn);
       await new Promise<void>((resolve) => {
-        callbackified('hello', (err, result) => {
+        callbackified('hello', (err: Error | null, result: string) => {
           expect(err).toBeNull();
           expect(result).toBe('HELLO');
           resolve();
@@ -353,7 +353,7 @@ describe('util module (Node.js compat)', () => {
 
       const callbackified = callbackify(asyncFn);
       await new Promise<void>((resolve) => {
-        callbackified((err, result) => {
+        callbackified((err: Error | null, result: string) => {
           expect(err).toBeInstanceOf(Error);
           expect(err?.message).toBe('test error');
           resolve();

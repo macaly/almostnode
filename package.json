@@ -81,6 +81,7 @@
     "test:e2e:debug": "playwright test --debug",
     "sandbox": "vite --port 3002 --config vite.sandbox.config.js",
     "sandbox:demo": "echo 'Run in two terminals:\\n  Terminal 1: npm run sandbox (serves sandbox on port 3002)\\n  Terminal 2: npm run dev (serves main app on port 5173)\\nThen open: http://localhost:5173/examples/sandbox-next-demo.html'",
+    "type-check": "tsc --noEmit",
     "prepublishOnly": "npm run test:run && npm run build:publish"
   },
   "dependencies": {

@@ -221,8 +221,8 @@ describe('ws shim', () => {
         });
       });
 
-      server.on('connection', (ws) => {
-        expect(server.clients.has(ws)).toBe(true);
+      server.on('connection', (ws: unknown) => {
+        expect(server.clients.has(ws as any)).toBe(true);
       });
 
       await wsPromise;
