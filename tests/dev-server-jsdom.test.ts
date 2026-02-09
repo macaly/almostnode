@@ -147,6 +147,56 @@ button {
       expect(hmrScript?.textContent).toContain('[HMR] Client ready with React Refresh support');
     });
 
+    it('should not place module scripts before import map in served HTML', async () => {
+      // The fixture index.html has an import map — verify the served HTML
+      // keeps all <script type="module"> after <script type="importmap"> (Firefox requirement)
+      const response = await server.handleRequest('GET', '/', {});
+      const html = response.body.toString();
+
+      const importmapPos = html.indexOf('<script type="importmap">');
+      const firstModulePos = html.indexOf('<script type="module">');
+
+      expect(importmapPos).not.toBe(-1);
+      expect(firstModulePos).not.toBe(-1);
+      expect(importmapPos).toBeLessThan(firstModulePos);
+    });
+
+    it('should keep module scripts after import map when import map has extra attributes', async () => {
+      vfs.writeFileSync(
+        '/index.html',
+        `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test React App</title>
+  <script nonce="abc" type="importmap" crossorigin="anonymous">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.2.0",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./src/main.jsx"></script>
+</body>
+</html>`
+      );
+
+      const response = await server.handleRequest('GET', '/', {});
+      const html = response.body.toString();
+
+      const importmapPos = html.indexOf('type="importmap"');
+      const firstModulePos = html.indexOf('<script type="module">');
+
+      expect(importmapPos).not.toBe(-1);
+      expect(firstModulePos).not.toBe(-1);
+      expect(importmapPos).toBeLessThan(firstModulePos);
+    });
+
     it('should serve CSS that can be applied to DOM', async () => {
       const response = await server.handleRequest('GET', '/src/style.css', {});
       const css = response.body.toString();

@@ -417,6 +417,85 @@ h1 {
 
       expect(hmrIndex).toBeLessThan(headCloseIndex);
     });
+
+    it('should inject module scripts after import map (Firefox compat)', async () => {
+      // Replace index.html with one that has an import map
+      vfs.writeFileSync(
+        '/index.html',
+        `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test App</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.2.0?dev",
+      "react-dom/client": "https://esm.sh/react-dom@18.2.0/client?dev"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>`
+      );
+
+      const response = await server.handleRequest('GET', '/', {});
+      const body = response.body.toString();
+
+      const importmapPos = body.indexOf('<script type="importmap">');
+      const firstModulePos = body.indexOf('<script type="module">');
+
+      expect(importmapPos).not.toBe(-1);
+      expect(firstModulePos).not.toBe(-1);
+      expect(importmapPos).toBeLessThan(firstModulePos);
+    });
+
+    it('should inject module scripts after import map with extra attributes', async () => {
+      vfs.writeFileSync(
+        '/index.html',
+        `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test App</title>
+  <script nonce="abc" crossorigin="anonymous" type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.2.0?dev"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>`
+      );
+
+      const response = await server.handleRequest('GET', '/', {});
+      const body = response.body.toString();
+
+      const importmapPos = body.indexOf('type="importmap"');
+      const firstModulePos = body.indexOf('<script type="module">');
+
+      expect(importmapPos).not.toBe(-1);
+      expect(firstModulePos).not.toBe(-1);
+      expect(importmapPos).toBeLessThan(firstModulePos);
+    });
+
+    it('should handle HTML without import map', async () => {
+      // The default fixture has no import map - preamble should still be injected
+      const response = await server.handleRequest('GET', '/', {});
+      const body = response.body.toString();
+
+      expect(body).toContain('React Refresh initialized');
+      expect(body).toContain('vite-hmr');
+    });
   });
 
   describe('JSX/TS transformation', () => {

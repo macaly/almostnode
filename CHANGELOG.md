@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.11] - 2026-02-09
+
+### Fixed
+
+- **Firefox blank preview:** Fixed Vite dev server injecting `<script type="module">` (React Refresh preamble) before `<script type="importmap">` in served HTML. Firefox strictly requires import maps to appear before any module scripts. The preamble is now injected after the last import map when one is present. ([#3](https://github.com/macaly/almostnode/issues/3))
+
 ## [0.2.10] - 2026-02-09
 
 ### Changed

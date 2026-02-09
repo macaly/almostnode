@@ -1,6 +1,6 @@
 {
   "name": "almostnode",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Node.js in your browser. Just like that.",
   "type": "module",
   "license": "MIT",

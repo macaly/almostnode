@@ -626,9 +626,20 @@ export default css;
     try {
       let content = this.vfs.readFileSync(filePath, 'utf8');
 
-      // Inject React Refresh preamble right after <head> to ensure it runs first
-      // The preamble blocks (via top-level await) until React Refresh is initialized
-      if (content.includes('<head>')) {
+      // Inject React Refresh preamble before any app module scripts.
+      // Firefox requires all <script type="importmap"> to appear before any <script type="module">,
+      // so if the HTML contains an import map, inject AFTER the last one (not right after <head>).
+      const importMapRegex = /<script\b[^>]*\btype\s*=\s*["']importmap["'][^>]*>[\s\S]*?<\/script>/gi;
+      let lastImportMapEnd = -1;
+      let match;
+      while ((match = importMapRegex.exec(content)) !== null) {
+        lastImportMapEnd = match.index + match[0].length;
+      }
+
+      if (lastImportMapEnd !== -1) {
+        // Insert preamble right after the last import map </script>
+        content = content.slice(0, lastImportMapEnd) + REACT_REFRESH_PREAMBLE + content.slice(lastImportMapEnd);
+      } else if (content.includes('<head>')) {
         content = content.replace('<head>', `<head>${REACT_REFRESH_PREAMBLE}`);
       } else if (content.includes('<html')) {
         // If no <head>, inject after <html...>
