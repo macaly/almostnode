@@ -121,6 +121,14 @@ export function getDefaultResultOrder(): string {
 export const promises = {
   lookup: (hostname: string, options?: { family?: number; all?: boolean }) => {
     return new Promise((resolve, reject) => {
+      if (options?.all) {
+        lookup(hostname, options, (err, addresses) => {
+          if (err) reject(err);
+          else resolve(addresses || []);
+        });
+        return;
+      }
+
       lookup(hostname, options || {}, (err, address, family) => {
         if (err) reject(err);
         else resolve({ address, family });

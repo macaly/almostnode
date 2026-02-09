@@ -13,20 +13,23 @@ export interface ReadLineOptions {
 }
 
 export class Interface extends EventEmitter {
+  private promptText: string;
+
   constructor(_options?: ReadLineOptions) {
     super();
+    this.promptText = _options?.prompt ?? '';
   }
 
   prompt(_preserveCursor?: boolean): void {
     // No-op in browser
   }
 
-  setPrompt(_prompt: string): void {
-    // No-op
+  setPrompt(prompt: string): void {
+    this.promptText = prompt;
   }
 
   getPrompt(): string {
-    return '';
+    return this.promptText;
   }
 
   question(_query: string, callback: (answer: string) => void): void {
@@ -63,18 +66,22 @@ export function createInterface(options?: ReadLineOptions): Interface {
 }
 
 export function clearLine(_stream: unknown, _dir: number, _callback?: () => void): boolean {
+  _callback?.();
   return true;
 }
 
 export function clearScreenDown(_stream: unknown, _callback?: () => void): boolean {
+  _callback?.();
   return true;
 }
 
 export function cursorTo(_stream: unknown, _x: number, _y?: number, _callback?: () => void): boolean {
+  _callback?.();
   return true;
 }
 
 export function moveCursor(_stream: unknown, _dx: number, _dy: number, _callback?: () => void): boolean {
+  _callback?.();
   return true;
 }
 
