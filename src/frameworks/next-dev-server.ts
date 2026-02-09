@@ -33,6 +33,23 @@ import {
   generatePageHtml as _generatePageHtml,
   serve404Page as _serve404Page,
 } from './next-html-generator';
+import {
+  type RouteResolverContext,
+  hasAppRouter,
+  resolveAppRoute,
+  resolveAppRouteHandler,
+  resolvePageFile,
+  resolveApiFile,
+  resolveFileWithExtension,
+  needsTransform,
+} from './next-route-resolver';
+import {
+  createMockRequest,
+  createMockResponse,
+  createStreamingMockResponse,
+  createBuiltinModules,
+  executeApiHandler,
+} from './next-api-handler';
 
 // Check if we're in a real browser environment (not jsdom or Node.js)
 const isBrowser = typeof window !== 'undefined' &&
@@ -172,6 +189,15 @@ export class NextDevServer extends DevServer {
   /** Base path for the app (e.g., '/docs') */
   private basePath: string = '';
 
+  /** Route resolver context (passes VFS access to standalone route functions) */
+  private get routeCtx(): RouteResolverContext {
+    return {
+      exists: (path: string) => this.exists(path),
+      isDirectory: (path: string) => this.isDirectory(path),
+      readdir: (path: string) => this.vfs.readdirSync(path) as string[],
+    };
+  }
+
   constructor(vfs: VirtualFS, options: NextDevServerOptions) {
     super(vfs, options);
     this.options = options;
@@ -185,7 +211,7 @@ export class NextDevServer extends DevServer {
       this.useAppRouter = options.preferAppRouter;
     } else {
       // Prefer App Router if /app directory exists with a page.jsx file
-      this.useAppRouter = this.hasAppRouter();
+      this.useAppRouter = hasAppRouter(this.appDir, this.routeCtx);
     }
 
     // Load path aliases from tsconfig.json
@@ -394,44 +420,6 @@ export class NextDevServer extends DevServer {
   }
 
   /**
-   * Check if App Router is available
-   */
-  private hasAppRouter(): boolean {
-    try {
-      // Check if /app directory exists and has a page file
-      if (!this.exists(this.appDir)) return false;
-
-      const extensions = ['.jsx', '.tsx', '.js', '.ts'];
-
-      // Check for root page directly
-      for (const ext of extensions) {
-        if (this.exists(`${this.appDir}/page${ext}`)) return true;
-      }
-
-      // Check for root page inside route groups (e.g., /app/(main)/page.tsx)
-      try {
-        const entries = this.vfs.readdirSync(this.appDir);
-        for (const entry of entries) {
-          if (/^\([^)]+\)$/.test(entry) && this.isDirectory(`${this.appDir}/${entry}`)) {
-            for (const ext of extensions) {
-              if (this.exists(`${this.appDir}/${entry}/page${ext}`)) return true;
-            }
-          }
-        }
-      } catch { /* ignore */ }
-
-      // Also check for any layout.tsx which indicates App Router usage
-      for (const ext of extensions) {
-        if (this.exists(`${this.appDir}/layout${ext}`)) return true;
-      }
-
-      return false;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Handle an incoming HTTP request
    */
   async handleRequest(
@@ -499,7 +487,7 @@ export class NextDevServer extends DevServer {
 
     // App Router API routes (route.ts/route.js) - check before Pages Router API routes
     if (this.useAppRouter) {
-      const appRouteFile = this.resolveAppRouteHandler(pathname);
+      const appRouteFile = resolveAppRouteHandler(this.appDir, pathname, this.routeCtx);
       if (appRouteFile) {
         return this.handleAppRouteHandler(method, pathname, headers, body, appRouteFile, urlObj.search);
       }
@@ -517,15 +505,15 @@ export class NextDevServer extends DevServer {
     }
 
     // Direct file requests (e.g., /pages/index.jsx for HMR re-imports)
-    if (this.needsTransform(pathname) && this.exists(pathname)) {
+    if (needsTransform(pathname) && this.exists(pathname)) {
       return this.transformAndServe(pathname, pathname);
     }
 
     // Try to resolve file with different extensions (for imports without extensions)
     // e.g., /components/faq -> /components/faq.tsx
-    const resolvedFile = this.resolveFileWithExtension(pathname);
+    const resolvedFile = resolveFileWithExtension(pathname, this.routeCtx);
     if (resolvedFile) {
-      if (this.needsTransform(resolvedFile)) {
+      if (needsTransform(resolvedFile)) {
         return this.transformAndServe(resolvedFile, pathname);
       }
       return this.serveFile(resolvedFile);
@@ -597,7 +585,7 @@ export class NextDevServer extends DevServer {
    * Returns params extracted from dynamic route segments
    */
   private serveRouteInfo(pathname: string): ResponseData {
-    const route = this.resolveAppRoute(pathname);
+    const route = resolveAppRoute(this.appDir, pathname, this.routeCtx);
 
     const info = route
       ? { params: route.params, found: true }
@@ -641,7 +629,7 @@ export class NextDevServer extends DevServer {
       .replace(/\.js$/, '');
 
     // Resolve the actual page file
-    const pageFile = this.resolvePageFile(route);
+    const pageFile = resolvePageFile(this.pagesDir, route, this.routeCtx);
 
     if (!pageFile) {
       return this.notFound(pathname);
@@ -690,7 +678,7 @@ export class NextDevServer extends DevServer {
     body?: Buffer
   ): Promise<ResponseData> {
     // Map /api/hello → /pages/api/hello.js or .ts
-    const apiFile = this.resolveApiFile(pathname);
+    const apiFile = resolveApiFile(this.pagesDir, pathname, this.routeCtx);
 
     if (!apiFile) {
       return {
@@ -707,11 +695,14 @@ export class NextDevServer extends DevServer {
       const transformed = await this.transformApiHandler(code, apiFile);
 
       // Create mock req/res objects
-      const req = this.createMockRequest(method, pathname, headers, body);
-      const res = this.createMockResponse();
+      const req = createMockRequest(method, pathname, headers, body);
+      const res = createMockResponse();
 
       // Execute the handler
-      await this.executeApiHandler(transformed, req, res);
+      const builtins = await createBuiltinModules(
+        () => import('../shims/fs').then(m => m.createFsShim(this.vfs))
+      );
+      await executeApiHandler(transformed, req, res, this.options.env, builtins);
 
       // Wait for async handlers (like those using https.get with callbacks)
       // with a reasonable timeout
@@ -737,112 +728,6 @@ export class NextDevServer extends DevServer {
   }
 
   /**
-   * Resolve an App Router route handler (route.ts/route.js)
-   * Returns the file path if found, null otherwise
-   */
-  private resolveAppRouteHandler(pathname: string): string | null {
-    const extensions = ['.ts', '.js', '.tsx', '.jsx'];
-
-    // Build the directory path in the app dir
-    const segments = pathname === '/' ? [] : pathname.split('/').filter(Boolean);
-    let dirPath = this.appDir;
-
-    for (const segment of segments) {
-      dirPath = `${dirPath}/${segment}`;
-    }
-
-    // Check for route file
-    for (const ext of extensions) {
-      const routePath = `${dirPath}/route${ext}`;
-      if (this.exists(routePath)) {
-        return routePath;
-      }
-    }
-
-    // Try dynamic route resolution with route groups
-    return this.resolveAppRouteHandlerDynamic(segments);
-  }
-
-  /**
-   * Resolve dynamic App Router route handlers with route group support
-   */
-  private resolveAppRouteHandlerDynamic(segments: string[]): string | null {
-    const extensions = ['.ts', '.js', '.tsx', '.jsx'];
-
-    const tryPath = (dirPath: string, remainingSegments: string[]): string | null => {
-      if (remainingSegments.length === 0) {
-        for (const ext of extensions) {
-          const routePath = `${dirPath}/route${ext}`;
-          if (this.exists(routePath)) {
-            return routePath;
-          }
-        }
-
-        // Check route groups
-        try {
-          const entries = this.vfs.readdirSync(dirPath);
-          for (const entry of entries) {
-            if (/^\([^)]+\)$/.test(entry) && this.isDirectory(`${dirPath}/${entry}`)) {
-              for (const ext of extensions) {
-                const routePath = `${dirPath}/${entry}/route${ext}`;
-                if (this.exists(routePath)) {
-                  return routePath;
-                }
-              }
-            }
-          }
-        } catch { /* ignore */ }
-
-        return null;
-      }
-
-      const [current, ...rest] = remainingSegments;
-
-      // Try exact match
-      const exactPath = `${dirPath}/${current}`;
-      if (this.isDirectory(exactPath)) {
-        const result = tryPath(exactPath, rest);
-        if (result) return result;
-      }
-
-      // Try route groups and dynamic segments
-      try {
-        const entries = this.vfs.readdirSync(dirPath);
-        for (const entry of entries) {
-          // Route groups
-          if (/^\([^)]+\)$/.test(entry) && this.isDirectory(`${dirPath}/${entry}`)) {
-            const groupExact = `${dirPath}/${entry}/${current}`;
-            if (this.isDirectory(groupExact)) {
-              const result = tryPath(groupExact, rest);
-              if (result) return result;
-            }
-          }
-          // Dynamic segments
-          if (entry.startsWith('[') && entry.endsWith(']') && !entry.includes('.')) {
-            const dynamicPath = `${dirPath}/${entry}`;
-            if (this.isDirectory(dynamicPath)) {
-              const result = tryPath(dynamicPath, rest);
-              if (result) return result;
-            }
-          }
-          // Catch-all
-          if (entry.startsWith('[...') && entry.endsWith(']')) {
-            const dynamicPath = `${dirPath}/${entry}`;
-            if (this.isDirectory(dynamicPath)) {
-              const result = tryPath(dynamicPath, []);
-              if (result) return result;
-            }
-          }
-        }
-      } catch { /* ignore */ }
-
-      return null;
-    };
-
-    return tryPath(this.appDir, segments);
-  }
-
-  /**
    * Handle App Router route handler (route.ts) requests
    * These use the Web Request/Response API pattern
    */
@@ -858,19 +743,8 @@ export class NextDevServer extends DevServer {
       const code = this.vfs.readFileSync(routeFile, 'utf8');
       const transformed = await this.transformApiHandler(code, routeFile);
 
-      // Create module context
-      const builtinModules: Record<string, unknown> = {
-        https: await import('../shims/https'),
-        http: await import('../shims/http'),
-        path: await import('../shims/path'),
-        url: await import('../shims/url'),
-        querystring: await import('../shims/querystring'),
-        util: await import('../shims/util'),
-        events: await import('../shims/events'),
-        stream: await import('../shims/stream'),
-        buffer: await import('../shims/buffer'),
-        crypto: await import('../shims/crypto'),
-      };
+      // Create module context and execute the route handler
+      const builtinModules = await createBuiltinModules();
 
       const require = (id: string): unknown => {
         const modId = id.startsWith('node:') ? id.slice(5) : id;
@@ -878,8 +752,8 @@ export class NextDevServer extends DevServer {
         throw new Error(`Module not found: ${id}`);
       };
 
-      const module = { exports: {} as Record<string, unknown> };
-      const exports = module.exports;
+      const moduleObj = { exports: {} as Record<string, unknown> };
+      const exports = moduleObj.exports;
       const process = {
         env: { ...this.options.env },
         cwd: () => '/',
@@ -889,11 +763,11 @@ export class NextDevServer extends DevServer {
       };
 
       const fn = new Function('exports', 'require', 'module', 'process', transformed);
-      fn(exports, require, module, process);
+      fn(exports, require, moduleObj, process);
 
       // Get the handler for the HTTP method
       const methodUpper = method.toUpperCase();
-      const handler = module.exports[methodUpper] || module.exports[methodUpper.toLowerCase()];
+      const handler = moduleObj.exports[methodUpper] || moduleObj.exports[methodUpper.toLowerCase()];
 
       if (typeof handler !== 'function') {
         return {
@@ -916,7 +790,7 @@ export class NextDevServer extends DevServer {
       const request = new Request(requestUrl.toString(), requestInit);
 
       // Extract route params
-      const route = this.resolveAppRoute(pathname);
+      const route = resolveAppRoute(this.appDir, pathname, this.routeCtx);
       const params = route?.params || {};
 
       // Call the handler
@@ -992,7 +866,7 @@ export class NextDevServer extends DevServer {
       return;
     }
 
-    const apiFile = this.resolveApiFile(pathname);
+    const apiFile = resolveApiFile(this.pagesDir, pathname, this.routeCtx);
 
     if (!apiFile) {
       onStart(404, 'Not Found', { 'Content-Type': 'application/json' });
@@ -1005,10 +879,13 @@ export class NextDevServer extends DevServer {
       const code = this.vfs.readFileSync(apiFile, 'utf8');
       const transformed = await this.transformApiHandler(code, apiFile);
 
-      const req = this.createMockRequest(method, pathname, headers, body);
-      const res = this.createStreamingMockResponse(onStart, onChunk, onEnd);
+      const req = createMockRequest(method, pathname, headers, body);
+      const res = createStreamingMockResponse(onStart, onChunk, onEnd);
 
-      await this.executeApiHandler(transformed, req, res);
+      const builtins = await createBuiltinModules(
+        () => import('../shims/fs').then(m => m.createFsShim(this.vfs))
+      );
+      await executeApiHandler(transformed, req, res, this.options.env, builtins);
 
       // Wait for the response to end
       if (!res.isEnded()) {
@@ -1026,362 +903,6 @@ export class NextDevServer extends DevServer {
   }
 
   /**
-   * Create a streaming mock response that calls callbacks as data is written
-   */
-  private createStreamingMockResponse(
-    onStart: (statusCode: number, statusMessage: string, headers: Record<string, string>) => void,
-    onChunk: (chunk: string | Uint8Array) => void,
-    onEnd: () => void
-  ) {
-    let statusCode = 200;
-    let statusMessage = 'OK';
-    const headers: Record<string, string> = {};
-    let ended = false;
-    let headersSent = false;
-    let resolveEnded: (() => void) | null = null;
-
-    const endedPromise = new Promise<void>((resolve) => {
-      resolveEnded = resolve;
-    });
-
-    const sendHeaders = () => {
-      if (!headersSent) {
-        headersSent = true;
-        onStart(statusCode, statusMessage, headers);
-      }
-    };
-
-    const markEnded = () => {
-      if (!ended) {
-        sendHeaders();
-        ended = true;
-        onEnd();
-        if (resolveEnded) resolveEnded();
-      }
-    };
-
-    return {
-      headersSent: false,
-
-      status(code: number) {
-        statusCode = code;
-        return this;
-      },
-      setHeader(name: string, value: string) {
-        headers[name] = value;
-        return this;
-      },
-      getHeader(name: string) {
-        return headers[name];
-      },
-      // Write data and stream it immediately
-      write(chunk: string | Buffer): boolean {
-        sendHeaders();
-        const data = typeof chunk === 'string' ? chunk : chunk.toString();
-        onChunk(data);
-        return true;
-      },
-      get writable() {
-        return true;
-      },
-      json(data: unknown) {
-        headers['Content-Type'] = 'application/json; charset=utf-8';
-        sendHeaders();
-        onChunk(JSON.stringify(data));
-        markEnded();
-        return this;
-      },
-      send(data: string | object) {
-        if (typeof data === 'object') {
-          return this.json(data);
-        }
-        sendHeaders();
-        onChunk(data);
-        markEnded();
-        return this;
-      },
-      end(data?: string) {
-        if (data) {
-          sendHeaders();
-          onChunk(data);
-        }
-        markEnded();
-        return this;
-      },
-      redirect(statusOrUrl: number | string, url?: string) {
-        if (typeof statusOrUrl === 'number') {
-          statusCode = statusOrUrl;
-          headers['Location'] = url || '/';
-        } else {
-          statusCode = 307;
-          headers['Location'] = statusOrUrl;
-        }
-        markEnded();
-        return this;
-      },
-      isEnded() {
-        return ended;
-      },
-      waitForEnd() {
-        return endedPromise;
-      },
-      toResponse(): ResponseData {
-        // This shouldn't be called for streaming responses
-        return {
-          statusCode,
-          statusMessage,
-          headers,
-          body: Buffer.from(''),
-        };
-      },
-    };
-  }
-
-  /**
-   * Resolve API route to file path
-   */
-  private resolveApiFile(pathname: string): string | null {
-    // Remove /api prefix and look in /pages/api
-    const apiPath = pathname.replace(/^\/api/, `${this.pagesDir}/api`);
-
-    const extensions = ['.js', '.ts', '.jsx', '.tsx'];
-
-    for (const ext of extensions) {
-      const filePath = apiPath + ext;
-      if (this.exists(filePath)) {
-        return filePath;
-      }
-    }
-
-    // Try index file
-    for (const ext of extensions) {
-      const filePath = `${apiPath}/index${ext}`;
-      if (this.exists(filePath)) {
-        return filePath;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Create mock Next.js request object
-   */
-  private createMockRequest(
-    method: string,
-    pathname: string,
-    headers: Record<string, string>,
-    body?: Buffer
-  ) {
-    const url = new URL(pathname, 'http://localhost');
-
-    return {
-      method,
-      url: pathname,
-      headers,
-      query: Object.fromEntries(url.searchParams),
-      body: body ? JSON.parse(body.toString()) : undefined,
-      cookies: this.parseCookies(headers.cookie || ''),
-    };
-  }
-
-  /**
-   * Parse cookie header
-   */
-  private parseCookies(cookieHeader: string): Record<string, string> {
-    const cookies: Record<string, string> = {};
-    if (!cookieHeader) return cookies;
-
-    cookieHeader.split(';').forEach(cookie => {
-      const [name, value] = cookie.trim().split('=');
-      if (name && value) {
-        cookies[name] = decodeURIComponent(value);
-      }
-    });
-
-    return cookies;
-  }
-
-  /**
-   * Create mock Next.js response object with streaming support
-   */
-  private createMockResponse() {
-    let statusCode = 200;
-    let statusMessage = 'OK';
-    const headers: Record<string, string> = {};
-    let responseBody = '';
-    let ended = false;
-    let resolveEnded: (() => void) | null = null;
-    let headersSent = false;
-
-    // Promise that resolves when response is ended
-    const endedPromise = new Promise<void>((resolve) => {
-      resolveEnded = resolve;
-    });
-
-    const markEnded = () => {
-      if (!ended) {
-        ended = true;
-        if (resolveEnded) resolveEnded();
-      }
-    };
-
-    return {
-      // Track if headers have been sent (for streaming)
-      headersSent: false,
-
-      status(code: number) {
-        statusCode = code;
-        return this;
-      },
-      setHeader(name: string, value: string) {
-        headers[name] = value;
-        return this;
-      },
-      getHeader(name: string) {
-        return headers[name];
-      },
-      // Write data to response body (for streaming)
-      write(chunk: string | Buffer): boolean {
-        if (!headersSent) {
-          headersSent = true;
-          this.headersSent = true;
-        }
-        responseBody += typeof chunk === 'string' ? chunk : chunk.toString();
-        return true;
-      },
-      // Writable stream interface for AI SDK compatibility
-      get writable() {
-        return true;
-      },
-      json(data: unknown) {
-        headers['Content-Type'] = 'application/json; charset=utf-8';
-        responseBody = JSON.stringify(data);
-        markEnded();
-        return this;
-      },
-      send(data: string | object) {
-        if (typeof data === 'object') {
-          return this.json(data);
-        }
-        responseBody = data;
-        markEnded();
-        return this;
-      },
-      end(data?: string) {
-        if (data) responseBody += data;
-        markEnded();
-        return this;
-      },
-      redirect(statusOrUrl: number | string, url?: string) {
-        if (typeof statusOrUrl === 'number') {
-          statusCode = statusOrUrl;
-          headers['Location'] = url || '/';
-        } else {
-          statusCode = 307;
-          headers['Location'] = statusOrUrl;
-        }
-        markEnded();
-        return this;
-      },
-      isEnded() {
-        return ended;
-      },
-      waitForEnd() {
-        return endedPromise;
-      },
-      toResponse(): ResponseData {
-        const buffer = Buffer.from(responseBody);
-        headers['Content-Length'] = String(buffer.length);
-        return {
-          statusCode,
-          statusMessage,
-          headers,
-          body: buffer,
-        };
-      },
-    };
-  }
-
-  /**
-   * Execute API handler code
-   */
-  private async executeApiHandler(
-    code: string,
-    req: ReturnType<typeof this.createMockRequest>,
-    res: ReturnType<typeof this.createMockResponse>
-  ): Promise<void> {
-    try {
-      // Create a minimal require function for built-in modules
-      const builtinModules: Record<string, unknown> = {
-        https: await import('../shims/https'),
-        http: await import('../shims/http'),
-        path: await import('../shims/path'),
-        fs: await import('../shims/fs').then(m => m.createFsShim(this.vfs)),
-        url: await import('../shims/url'),
-        querystring: await import('../shims/querystring'),
-        util: await import('../shims/util'),
-        events: await import('../shims/events'),
-        stream: await import('../shims/stream'),
-        buffer: await import('../shims/buffer'),
-        crypto: await import('../shims/crypto'),
-      };
-
-      const require = (id: string): unknown => {
-        // Handle node: prefix
-        const modId = id.startsWith('node:') ? id.slice(5) : id;
-        if (builtinModules[modId]) {
-          return builtinModules[modId];
-        }
-        throw new Error(`Module not found: ${id}`);
-      };
-
-      // Create module context
-      const module = { exports: {} as Record<string, unknown> };
-      const exports = module.exports;
-
-      // Create process object with environment variables
-      const process = {
-        env: { ...this.options.env },
-        cwd: () => '/',
-        platform: 'browser',
-        version: 'v18.0.0',
-        versions: { node: '18.0.0' },
-      };
-
-      // Execute the transformed code
-      // The code is already in CJS format from esbuild transform
-      // Use Function constructor instead of eval with template literal
-      // to avoid issues with backticks or ${} in the transformed code
-      const fn = new Function('exports', 'require', 'module', 'process', code);
-      fn(exports, require, module, process);
-
-      // Get the handler - check both module.exports and module.exports.default
-      let handler: unknown = module.exports.default || module.exports;
-
-      // If handler is still an object with a default property, unwrap it
-      if (typeof handler === 'object' && handler !== null && 'default' in handler) {
-        handler = (handler as { default: unknown }).default;
-      }
-
-      if (typeof handler !== 'function') {
-        throw new Error('No default export handler found');
-      }
-
-      // Call the handler - it may be async
-      const result = (handler as (req: unknown, res: unknown) => unknown)(req, res);
-
-      // If the handler returns a promise, wait for it
-      if (result instanceof Promise) {
-        await result;
-      }
-    } catch (error) {
-      console.error('[NextDevServer] API handler error:', error);
-      throw error;
-    }
-  }
-
-  /**
    * Handle page route requests
    */
   private async handlePageRoute(pathname: string, search: string): Promise<ResponseData> {
@@ -1391,11 +912,11 @@ export class NextDevServer extends DevServer {
     }
 
     // Resolve pathname to page file (Pages Router)
-    const pageFile = this.resolvePageFile(pathname);
+    const pageFile = resolvePageFile(this.pagesDir, pathname, this.routeCtx);
 
     if (!pageFile) {
       // Try to serve 404 page if exists
-      const notFoundPage = this.resolvePageFile('/404');
+      const notFoundPage = resolvePageFile(this.pagesDir, '/404', this.routeCtx);
       if (notFoundPage) {
         const html = await this.generatePageHtml(notFoundPage, '/404');
         return {
@@ -1409,7 +930,7 @@ export class NextDevServer extends DevServer {
     }
 
     // Check if this is a direct request for a page file (e.g., /pages/index.jsx)
-    if (this.needsTransform(pathname)) {
+    if (needsTransform(pathname)) {
       return this.transformAndServe(pageFile, pathname);
     }
 
@@ -1434,11 +955,11 @@ export class NextDevServer extends DevServer {
    */
   private async handleAppRouterPage(pathname: string, search: string): Promise<ResponseData> {
     // Resolve the route to page and layouts
-    const route = this.resolveAppRoute(pathname);
+    const route = resolveAppRoute(this.appDir, pathname, this.routeCtx);
 
     if (!route) {
       // Try not-found page
-      const notFoundRoute = this.resolveAppRoute('/not-found');
+      const notFoundRoute = resolveAppRoute(this.appDir, '/not-found', this.routeCtx);
       if (notFoundRoute) {
         const html = await this.generateAppRouterHtml(notFoundRoute, '/not-found');
         return {
@@ -1467,247 +988,6 @@ export class NextDevServer extends DevServer {
   }
 
   /**
-   * Resolve App Router route to page and layout files
-   */
-  private resolveAppRoute(pathname: string): AppRoute | null {
-    const segments = pathname === '/' ? [] : pathname.split('/').filter(Boolean);
-    // Use the unified dynamic resolver which handles static, dynamic, and route groups
-    return this.resolveAppDynamicRoute(pathname, segments);
-  }
-
-  /**
-   * Resolve App Router routes including static, dynamic, and route groups.
-   * Route groups are folders wrapped in parentheses like (marketing) that
-   * don't affect the URL path but can have their own layouts.
-   */
-  private resolveAppDynamicRoute(
-    _pathname: string,
-    segments: string[]
-  ): AppRoute | null {
-    const extensions = ['.jsx', '.tsx', '.js', '.ts'];
-
-    /**
-     * Collect layout from a directory if it exists
-     */
-    const collectLayout = (dirPath: string, layouts: string[]): string[] => {
-      for (const ext of extensions) {
-        const layoutPath = `${dirPath}/layout${ext}`;
-        if (this.exists(layoutPath) && !layouts.includes(layoutPath)) {
-          return [...layouts, layoutPath];
-        }
-      }
-      return layouts;
-    };
-
-    /**
-     * Find page file in a directory
-     */
-    const findPage = (dirPath: string): string | null => {
-      for (const ext of extensions) {
-        const pagePath = `${dirPath}/page${ext}`;
-        if (this.exists(pagePath)) {
-          return pagePath;
-        }
-      }
-      return null;
-    };
-
-    /**
-     * Find a UI convention file (loading, error, not-found) in a directory
-     */
-    const findConventionFile = (dirPath: string, name: string): string | null => {
-      for (const ext of extensions) {
-        const filePath = `${dirPath}/${name}${ext}`;
-        if (this.exists(filePath)) {
-          return filePath;
-        }
-      }
-      return null;
-    };
-
-    /**
-     * Find the nearest convention file by walking up from the page directory
-     */
-    const findNearestConventionFile = (dirPath: string, name: string): string | null => {
-      let current = dirPath;
-      while (current.startsWith(this.appDir)) {
-        const file = findConventionFile(current, name);
-        if (file) return file;
-        // Move up one directory
-        const parent = current.replace(/\/[^/]+$/, '');
-        if (parent === current) break;
-        current = parent;
-      }
-      return null;
-    };
-
-    /**
-     * Get route group directories (folders matching (name) pattern)
-     */
-    const getRouteGroups = (dirPath: string): string[] => {
-      try {
-        const entries = this.vfs.readdirSync(dirPath);
-        return entries.filter(e => /^\([^)]+\)$/.test(e) && this.isDirectory(`${dirPath}/${e}`));
-      } catch {
-        return [];
-      }
-    };
-
-    const tryPath = (
-      dirPath: string,
-      remainingSegments: string[],
-      layouts: string[],
-      params: Record<string, string | string[]>
-    ): AppRoute | null => {
-      // Check for layout at current level
-      layouts = collectLayout(dirPath, layouts);
-
-      if (remainingSegments.length === 0) {
-        // Look for page file directly
-        const page = findPage(dirPath);
-        if (page) {
-          return {
-            page, layouts, params,
-            loading: findNearestConventionFile(dirPath, 'loading') || undefined,
-            error: findNearestConventionFile(dirPath, 'error') || undefined,
-            notFound: findNearestConventionFile(dirPath, 'not-found') || undefined,
-          };
-        }
-
-        // Look for page inside route groups at this level
-        // e.g., /app/(marketing)/page.tsx resolves to /
-        const groups = getRouteGroups(dirPath);
-        for (const group of groups) {
-          const groupPath = `${dirPath}/${group}`;
-          const groupLayouts = collectLayout(groupPath, layouts);
-          const page = findPage(groupPath);
-          if (page) {
-            return {
-              page, layouts: groupLayouts, params,
-              loading: findNearestConventionFile(groupPath, 'loading') || undefined,
-              error: findNearestConventionFile(groupPath, 'error') || undefined,
-              notFound: findNearestConventionFile(groupPath, 'not-found') || undefined,
-            };
-          }
-        }
-
-        return null;
-      }
-
-      const [current, ...rest] = remainingSegments;
-
-      // Try exact match first
-      const exactPath = `${dirPath}/${current}`;
-      if (this.isDirectory(exactPath)) {
-        const result = tryPath(exactPath, rest, layouts, params);
-        if (result) return result;
-      }
-
-      // Try inside route groups - route groups are transparent in URL
-      // e.g., /about might match /app/(marketing)/about/page.tsx
-      const groups = getRouteGroups(dirPath);
-      for (const group of groups) {
-        const groupPath = `${dirPath}/${group}`;
-        const groupLayouts = collectLayout(groupPath, layouts);
-
-        // Try exact match inside group
-        const groupExactPath = `${groupPath}/${current}`;
-        if (this.isDirectory(groupExactPath)) {
-          const result = tryPath(groupExactPath, rest, groupLayouts, params);
-          if (result) return result;
-        }
-
-        // Try dynamic segments inside group
-        try {
-          const groupEntries = this.vfs.readdirSync(groupPath);
-          for (const entry of groupEntries) {
-            if (entry.startsWith('[...') && entry.endsWith(']')) {
-              const dynamicPath = `${groupPath}/${entry}`;
-              if (this.isDirectory(dynamicPath)) {
-                const paramName = entry.slice(4, -1);
-                const newParams = { ...params, [paramName]: [current, ...rest] };
-                const result = tryPath(dynamicPath, [], groupLayouts, newParams);
-                if (result) return result;
-              }
-            } else if (entry.startsWith('[[...') && entry.endsWith(']]')) {
-              const dynamicPath = `${groupPath}/${entry}`;
-              if (this.isDirectory(dynamicPath)) {
-                const paramName = entry.slice(5, -2);
-                const newParams = { ...params, [paramName]: [current, ...rest] };
-                const result = tryPath(dynamicPath, [], groupLayouts, newParams);
-                if (result) return result;
-              }
-            } else if (entry.startsWith('[') && entry.endsWith(']') && !entry.includes('.')) {
-              const dynamicPath = `${groupPath}/${entry}`;
-              if (this.isDirectory(dynamicPath)) {
-                const paramName = entry.slice(1, -1);
-                const newParams = { ...params, [paramName]: current };
-                const result = tryPath(dynamicPath, rest, groupLayouts, newParams);
-                if (result) return result;
-              }
-            }
-          }
-        } catch {
-          // Group directory read failed
-        }
-      }
-
-      // Try dynamic segments at current level
-      try {
-        const entries = this.vfs.readdirSync(dirPath);
-        for (const entry of entries) {
-          // Handle catch-all routes [...slug]
-          if (entry.startsWith('[...') && entry.endsWith(']')) {
-            const dynamicPath = `${dirPath}/${entry}`;
-            if (this.isDirectory(dynamicPath)) {
-              const paramName = entry.slice(4, -1);
-              const newParams = { ...params, [paramName]: [current, ...rest] };
-              const result = tryPath(dynamicPath, [], layouts, newParams);
-              if (result) return result;
-            }
-          }
-          // Handle optional catch-all routes [[...slug]]
-          else if (entry.startsWith('[[...') && entry.endsWith(']]')) {
-            const dynamicPath = `${dirPath}/${entry}`;
-            if (this.isDirectory(dynamicPath)) {
-              const paramName = entry.slice(5, -2);
-              const newParams = { ...params, [paramName]: [current, ...rest] };
-              const result = tryPath(dynamicPath, [], layouts, newParams);
-              if (result) return result;
-            }
-          }
-          // Handle single dynamic segment [param]
-          else if (entry.startsWith('[') && entry.endsWith(']') && !entry.includes('.')) {
-            const dynamicPath = `${dirPath}/${entry}`;
-            if (this.isDirectory(dynamicPath)) {
-              const paramName = entry.slice(1, -1);
-              const newParams = { ...params, [paramName]: current };
-              const result = tryPath(dynamicPath, rest, layouts, newParams);
-              if (result) return result;
-            }
-          }
-        }
-      } catch {
-        // Directory doesn't exist
-      }
-
-      return null;
-    };
-
-    // Collect root layout
-    const layouts: string[] = [];
-    for (const ext of extensions) {
-      const rootLayout = `${this.appDir}/layout${ext}`;
-      if (this.exists(rootLayout)) {
-        layouts.push(rootLayout);
-        break;
-      }
-    }
-
-    return tryPath(this.appDir, segments, layouts, {});
-  }
-
-  /**
    * Build context object for HTML generation functions
    */
   private htmlContext() {
@@ -1731,126 +1011,6 @@ export class NextDevServer extends DevServer {
 
 
   /**
-   * Resolve URL pathname to page file
-   */
-  private resolvePageFile(pathname: string): string | null {
-    // Handle root path
-    if (pathname === '/') {
-      pathname = '/index';
-    }
-
-    const extensions = ['.jsx', '.tsx', '.js', '.ts'];
-
-    // Try exact match: /about → /pages/about.jsx
-    for (const ext of extensions) {
-      const filePath = `${this.pagesDir}${pathname}${ext}`;
-      if (this.exists(filePath)) {
-        return filePath;
-      }
-    }
-
-    // Try index file: /about → /pages/about/index.jsx
-    for (const ext of extensions) {
-      const filePath = `${this.pagesDir}${pathname}/index${ext}`;
-      if (this.exists(filePath)) {
-        return filePath;
-      }
-    }
-
-    // Try dynamic route matching
-    return this.resolveDynamicRoute(pathname);
-  }
-
-  /**
-   * Resolve dynamic routes like /users/[id]
-   */
-  private resolveDynamicRoute(pathname: string): string | null {
-    const segments = pathname.split('/').filter(Boolean);
-    if (segments.length === 0) return null;
-
-    const extensions = ['.jsx', '.tsx', '.js', '.ts'];
-
-    // Build possible paths with dynamic segments
-    // e.g., /users/123 could match /pages/users/[id].jsx
-    const tryPath = (dirPath: string, remainingSegments: string[]): string | null => {
-      if (remainingSegments.length === 0) {
-        // Try index file
-        for (const ext of extensions) {
-          const indexPath = `${dirPath}/index${ext}`;
-          if (this.exists(indexPath)) {
-            return indexPath;
-          }
-        }
-        return null;
-      }
-
-      const [current, ...rest] = remainingSegments;
-
-      // Try exact match first
-      const exactPath = `${dirPath}/${current}`;
-
-      // Check if it's a file
-      for (const ext of extensions) {
-        if (rest.length === 0 && this.exists(exactPath + ext)) {
-          return exactPath + ext;
-        }
-      }
-
-      // Check if it's a directory
-      if (this.isDirectory(exactPath)) {
-        const exactResult = tryPath(exactPath, rest);
-        if (exactResult) return exactResult;
-      }
-
-      // Try dynamic segment [param]
-      try {
-        const entries = this.vfs.readdirSync(dirPath);
-        for (const entry of entries) {
-          // Check for dynamic file like [id].jsx
-          for (const ext of extensions) {
-            const dynamicFilePattern = /^\[([^\]]+)\]$/;
-            const nameWithoutExt = entry.replace(ext, '');
-            if (entry.endsWith(ext) && dynamicFilePattern.test(nameWithoutExt)) {
-              // It's a dynamic file like [id].jsx
-              if (rest.length === 0) {
-                const filePath = `${dirPath}/${entry}`;
-                if (this.exists(filePath)) {
-                  return filePath;
-                }
-              }
-            }
-          }
-
-          // Check for dynamic directory like [id]
-          if (entry.startsWith('[') && entry.endsWith(']') && !entry.includes('.')) {
-            const dynamicPath = `${dirPath}/${entry}`;
-            if (this.isDirectory(dynamicPath)) {
-              const dynamicResult = tryPath(dynamicPath, rest);
-              if (dynamicResult) return dynamicResult;
-            }
-          }
-
-          // Check for catch-all [...param].jsx
-          for (const ext of extensions) {
-            if (entry.startsWith('[...') && entry.endsWith(']' + ext)) {
-              const filePath = `${dirPath}/${entry}`;
-              if (this.exists(filePath)) {
-                return filePath;
-              }
-            }
-          }
-        }
-      } catch {
-        // Directory doesn't exist
-      }
-
-      return null;
-    };
-
-    return tryPath(this.pagesDir, segments);
-  }
-
-  /**
    * Generate HTML shell for a page
    */
   private async generatePageHtml(pageFile: string, pathname: string): Promise<string> {
@@ -1862,46 +1022,6 @@ export class NextDevServer extends DevServer {
    */
   private serve404Page(): ResponseData {
     return _serve404Page(this.port);
-  }
-
-  /**
-   * Try to resolve a file path by adding common extensions
-   * e.g., /components/faq -> /components/faq.tsx
-   * Also handles index files in directories
-   */
-  private resolveFileWithExtension(pathname: string): string | null {
-    // If the file already has an extension and exists, return it
-    if (/\.\w+$/.test(pathname) && this.exists(pathname)) {
-      return pathname;
-    }
-
-    // Common extensions to try, in order of preference
-    const extensions = ['.tsx', '.ts', '.jsx', '.js'];
-
-    // Try adding extensions directly
-    for (const ext of extensions) {
-      const withExt = pathname + ext;
-      if (this.exists(withExt)) {
-        return withExt;
-      }
-    }
-
-    // Try as a directory with index file
-    for (const ext of extensions) {
-      const indexPath = pathname + '/index' + ext;
-      if (this.exists(indexPath)) {
-        return indexPath;
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Check if a file needs transformation
-   */
-  private needsTransform(path: string): boolean {
-    return /\.(jsx|tsx|ts)$/.test(path);
   }
 
   /**
