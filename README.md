@@ -885,13 +885,21 @@ Open `http://localhost:5173/examples/next-demo.html` to see the Next.js demo.
 
 ## Contributing
 
-Contributions are welcome! Please:
+We welcome contributions! Whether you're fixing bugs, adding Node.js API shims, improving documentation, or building new features, your help is appreciated.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+Check out our **[Contributing Guide](CONTRIBUTING.md)** to get started.
+
+Before contributing:
+1. Read the [Contributing Guide](CONTRIBUTING.md)
+2. Check existing [issues](https://github.com/macaly/almostnode/issues) and [discussions](https://github.com/macaly/almostnode/discussions)
+3. Follow the code style and conventions
+4. Add tests for new features
+5. Update documentation as needed
+
+**Quick links:**
+- [Report a bug](https://github.com/macaly/almostnode/issues/new?template=bug_report.yml)
+- [Request a feature](https://github.com/macaly/almostnode/issues/new?template=feature_request.yml)
+- [View discussions](https://github.com/macaly/almostnode/discussions)
 
 ---
 

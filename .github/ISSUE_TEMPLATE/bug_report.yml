@@ -1,0 +1,179 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us resolve the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear description of what the bug is
+      placeholder: When I do X, Y happens instead of Z
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Detailed steps to reproduce the behavior
+      placeholder: |
+        1. Create a container with...
+        2. Execute code...
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen
+      placeholder: I expected the code to execute successfully
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened (include error messages if any)
+      placeholder: Got error "Cannot find module 'fs'"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which component is affected?
+      description: Select all that apply
+      multiple: true
+      options:
+        - Runtime / Code execution
+        - Virtual File System (VFS)
+        - Node.js API shims (fs, path, http, etc.)
+        - npm package installation
+        - Vite dev server
+        - Next.js dev server
+        - Service Worker
+        - Web Worker / Sandbox
+        - TypeScript transformation
+        - Hot Module Replacement (HMR)
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: almostnode-version
+    attributes:
+      label: almostnode version
+      description: Run `npm list almostnode` or check package.json
+      placeholder: "0.2.11"
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: Run `node --version`
+      placeholder: "v20.10.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options:
+        - Chrome
+        - Firefox
+        - Safari
+        - Edge
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser-version
+    attributes:
+      label: Browser version
+      placeholder: "Chrome 120.0.0"
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Execution mode
+      options:
+        - Same-origin (dangerouslyAllowSameOrigin)
+        - Cross-origin sandbox
+        - Web Worker
+        - Main thread
+        - Not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: code
+    attributes:
+      label: Minimal reproduction code
+      description: Provide the smallest code snippet that reproduces the issue
+      render: typescript
+      placeholder: |
+        import { createContainer } from 'almostnode';
+        
+        const container = createContainer();
+        const result = container.execute(`
+          const fs = require('fs');
+          // Bug happens here
+        `);
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output / Error logs
+      description: Include relevant console output or error messages
+      render: shell
+      placeholder: |
+        Error: Cannot find module 'fs'
+        at Runtime.require (runtime.ts:123)
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any other context, screenshots, or information that might help
+      placeholder: |
+        - This started happening after upgrading to version X
+        - Works fine in Chrome but fails in Safari
+        - Screenshot: [attach image]
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission checklist
+      options:
+        - label: I have searched existing issues to avoid duplicates
+          required: true
+        - label: I have tested with the latest version of almostnode
+          required: true
+        - label: I have included a minimal reproduction
+          required: true
