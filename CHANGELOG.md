@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.14] - 2026-02-14
+
+### Added
+- **Agent Workbench demo**: AI coding agent that builds Next.js pages live with file editing, bash execution, and HMR preview. Added to homepage demos grid.
+- **Vercel AI SDK demo**: Streaming AI chatbot with Next.js, OpenAI, and real-time token streaming via Pages Router API route
+- **Express demo E2E tests**: New Playwright tests for the Express server demo
+- **`vfs-require` module** (`src/frameworks/vfs-require.ts`): Shared require system extracted for reuse across entry points
+- **`npm-serve` module** (`src/frameworks/npm-serve.ts`): Shared `/_npm/` package bundling endpoint with nested exports support
+- **CI E2E pipeline**: GitHub Actions now runs Playwright E2E tests after unit tests with Chromium
+- **CLAUDE.md**: Project instructions file for AI-assisted development
+
+### Fixed
+- **Route group client-side navigation**: Pages inside route groups (e.g. `(marketing)/about`) now render correctly during client-side navigation. Replaced local path construction with server-based `resolveRoute()` using extended `/_next/route-info` endpoint that returns actual `page` and `layouts` paths.
+- **`convertToModelMessages` import**: Vercel AI SDK demo now imports from `ai` package instead of non-existent `@ai-sdk/ui-utils`
+- **npm-serve nested exports**: Packages with nested `exports` field entries (e.g. `ai/react`, `@ai-sdk/openai`) now resolve correctly
+- **TypeScript type errors**: Fixed duplicate `setEnv` method, `executeApiHandler` return type, `cpExec` callback types
+
+### Changed
+- **Agent Workbench guardrails removed**: AI agent can now modify any project file including root page (`/app/page.tsx`), `package.json`, and `tsconfig.json`. Only `/pages/api/chat.ts` remains protected.
+- **E2E tests hardened**: Removed try/catch fallbacks across all E2E tests for strict assertions; collect page errors for better debugging
+- **Convex and Vite demos refactored**: Use platform's `vfs-require` and `npm-serve` modules instead of inline implementations
+
 ## [0.2.13] - 2026-02-12
 
 ### Added
