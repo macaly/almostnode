@@ -74,12 +74,14 @@ function* parseTar(data: Uint8Array): Generator<TarEntry> {
         type = 'unknown';
     }
 
-    // Read file content
+    // Read file content (empty files get an empty Uint8Array)
     let content: Uint8Array | undefined;
-    if (type === 'file' && size > 0) {
-      content = data.slice(offset, offset + size);
-      // Move past content, rounded up to 512-byte boundary
-      offset += Math.ceil(size / 512) * 512;
+    if (type === 'file') {
+      content = size > 0 ? data.slice(offset, offset + size) : new Uint8Array(0);
+      if (size > 0) {
+        // Move past content, rounded up to 512-byte boundary
+        offset += Math.ceil(size / 512) * 512;
+      }
     }
 
     yield {

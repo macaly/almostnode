@@ -206,6 +206,8 @@ function resolveNpmPackage(
   packageName: string,
   extraLocalPackages?: Set<string>,
   dependencies?: Record<string, string>,
+  esmShDeps?: string,
+  installedPackages?: Set<string>,
 ): string | null {
   // Skip relative, absolute, URL, and virtual paths
   if (packageName.startsWith('.') || packageName.startsWith('/') ||
@@ -228,6 +230,11 @@ function resolveNpmPackage(
   if (LOCAL_PACKAGES.has(scopedBasePkg)) return null;
   if (extraLocalPackages?.has(scopedBasePkg)) return null;
 
+  // Serve from VFS bundle if package is installed locally
+  if (installedPackages?.has(scopedBasePkg)) {
+    return `/_npm/${packageName}`;
+  }
+
   // Build versioned esm.sh URL. Include major version from package.json
   // dependencies when available — esm.sh requires this for subpath exports.
   let esmPkg = packageName;
@@ -243,7 +250,8 @@ function resolveNpmPackage(
     }
   }
 
-  return `https://esm.sh/${esmPkg}?external=react`;
+  const depsParam = esmShDeps ? `&deps=${esmShDeps}` : '';
+  return `https://esm.sh/${esmPkg}?external=react${depsParam}`;
 }
 
 /**
@@ -256,17 +264,21 @@ function resolveNpmPackage(
  *   Used by frameworks that add their own import map entries (e.g., Convex demo).
  * @param dependencies - Dependency versions from package.json (e.g., {"ai": "^4.0.0"}).
  *   Used to include major version in esm.sh URLs for correct subpath resolution.
+ * @param installedPackages - Packages installed in VFS node_modules. These are
+ *   served from /_npm/ instead of esm.sh, giving us full control over resolution.
  */
 export function redirectNpmImports(
   code: string,
   additionalLocalPackages?: string[],
   dependencies?: Record<string, string>,
+  esmShDeps?: string,
+  installedPackages?: Set<string>,
 ): string {
   const extraSet = additionalLocalPackages?.length ? new Set(additionalLocalPackages) : undefined;
   try {
-    return redirectNpmImportsAst(code, extraSet, dependencies);
+    return redirectNpmImportsAst(code, extraSet, dependencies, esmShDeps, installedPackages);
   } catch {
-    return redirectNpmImportsRegex(code, extraSet, dependencies);
+    return redirectNpmImportsRegex(code, extraSet, dependencies, esmShDeps, installedPackages);
   }
 }
 
@@ -274,6 +286,8 @@ function redirectNpmImportsAst(
   code: string,
   extraLocalPackages?: Set<string>,
   dependencies?: Record<string, string>,
+  esmShDeps?: string,
+  installedPackages?: Set<string>,
 ): string {
   const ast = acorn.parse(code, { ecmaVersion: 'latest', sourceType: 'module' });
 
@@ -282,7 +296,7 @@ function redirectNpmImportsAst(
 
   function processSource(sourceNode: any) {
     if (!sourceNode || sourceNode.type !== 'Literal') return;
-    const resolved = resolveNpmPackage(sourceNode.value, extraLocalPackages, dependencies);
+    const resolved = resolveNpmPackage(sourceNode.value, extraLocalPackages, dependencies, esmShDeps, installedPackages);
     if (resolved) {
       // Replace the string literal (including quotes) — sourceNode.start/end include quotes
       replacements.push([sourceNode.start, sourceNode.end, JSON.stringify(resolved)]);
@@ -315,10 +329,12 @@ function redirectNpmImportsRegex(
   code: string,
   extraLocalPackages?: Set<string>,
   dependencies?: Record<string, string>,
+  esmShDeps?: string,
+  installedPackages?: Set<string>,
 ): string {
   const importPattern = /(from\s*['"])([^'"./][^'"]*?)(['"])/g;
   return code.replace(importPattern, (match, prefix, packageName, suffix) => {
-    const resolved = resolveNpmPackage(packageName, extraLocalPackages, dependencies);
+    const resolved = resolveNpmPackage(packageName, extraLocalPackages, dependencies, esmShDeps, installedPackages);
     if (!resolved) return match;
     return `${prefix}${resolved}${suffix}`;
   });

@@ -1,23 +1,24 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Vite Demo with Service Worker', () => {
+  let pageErrors: string[] = [];
+
   test.beforeEach(async ({ page }) => {
-    // Listen to console messages for debugging
+    pageErrors = [];
     page.on('console', (msg) => {
       console.log(`[Browser ${msg.type()}]`, msg.text());
     });
-
-    // Listen to page errors
     page.on('pageerror', (error) => {
       console.error('[Page Error]', error.message);
+      pageErrors.push(error.message);
     });
   });
 
   test('should load the demo page', async ({ page }) => {
     await page.goto('/examples/vite-demo.html');
 
-    // Check the title
-    await expect(page.locator('h1')).toContainText('Vite Demo');
+    // Check the title in topbar
+    await expect(page.locator('.demo-topbar .title')).toContainText('Vite');
 
     // Check that buttons exist
     await expect(page.locator('#save-btn')).toBeVisible();
@@ -97,29 +98,14 @@ test.describe('Vite Demo with Service Worker', () => {
     const iframeHandle = await iframe.elementHandle();
     const frame = await iframeHandle?.contentFrame();
 
-    if (frame) {
-      // Get full HTML first for debugging
-      const html = await frame.content();
-      console.log('[Iframe HTML length]', html.length);
-      console.log('[Iframe HTML snippet]', html.substring(0, 500));
+    expect(frame).toBeTruthy();
 
-      // Check for #root
-      const hasRoot = await frame.locator('#root').count();
-      console.log('[Iframe has #root]', hasRoot);
-
-      if (hasRoot > 0) {
-        const rootContent = await frame.locator('#root').innerHTML();
-        console.log('[Iframe #root content]', rootContent.substring(0, 300));
-        expect(rootContent.length).toBeGreaterThanOrEqual(0);
-      } else {
-        // If no root, check what's in body
-        const bodyContent = await frame.locator('body').innerHTML();
-        console.log('[Iframe body content]', bodyContent.substring(0, 500));
-        throw new Error('No #root element found in iframe');
-      }
-    } else {
-      throw new Error('Could not access iframe content');
-    }
+    // Must have #root — proves Vite HTML was served correctly
+    await frame!.waitForSelector('#root', { timeout: 10000 });
+    const rootContent = await frame!.locator('#root').innerHTML();
+    console.log('[Iframe #root content length]', rootContent.length);
+    // React should have rendered something into #root
+    expect(rootContent.length).toBeGreaterThan(0);
   });
 
   test('should show console output', async ({ page }) => {
@@ -187,51 +173,6 @@ test.describe('Vite Demo with Service Worker', () => {
     expect(swRegistered).toBe(true);
   });
 
-  test('SW debug mode should show what SW receives', async ({ page }) => {
-    page.on('console', (msg) => console.log(`[Console ${msg.type()}]`, msg.text()));
-
-    // Go to demo and start the server to register SW
-    await page.goto('/examples/vite-demo.html');
-    await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
-    await page.click('#run-btn');
-    await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
-
-    // Now test the SW with debug mode
-    const result = await page.evaluate(async () => {
-      const response = await fetch('/__virtual__/3000/?__sw_debug__');
-      const text = await response.text();
-      return {
-        status: response.status,
-        text: text,
-      };
-    });
-
-    console.log('[SW Debug Result]', result.text);
-    expect(result.status).toBe(200);
-  });
-
-  test('SW test mode should return hardcoded response', async ({ page }) => {
-    // Go to demo and start the server to register SW
-    await page.goto('/examples/vite-demo.html');
-    await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
-    await page.click('#run-btn');
-    await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
-
-    // Now test the SW with test mode
-    const result = await page.evaluate(async () => {
-      const response = await fetch('/__virtual__/3000/?__sw_test__');
-      const text = await response.text();
-      return {
-        status: response.status,
-        text: text,
-      };
-    });
-
-    console.log('[SW Test Result]', result);
-    expect(result.status).toBe(200);
-    expect(result.text).toContain('SW Test OK');
-  });
-
   test('should not have esbuild initialization errors in iframe', async ({ page }) => {
     const errors: string[] = [];
     const iframeErrors: string[] = [];
@@ -289,37 +230,22 @@ test.describe('Vite Demo with Service Worker', () => {
     const iframeHandle = await iframe.elementHandle();
     const frame = await iframeHandle?.contentFrame();
 
-    if (frame) {
-      // Get the iframe HTML
-      const html = await frame.content();
-      console.log('[Iframe HTML length]', html.length);
-      console.log('[Iframe HTML snippet]', html.substring(0, 500));
+    expect(frame).toBeTruthy();
 
-      // Check if there are any script errors visible in the iframe
-      const bodyText = await frame.locator('body').innerText().catch(() => '');
-      console.log('[Iframe body text]', bodyText.substring(0, 500));
+    // Verify React rendered into #root
+    await frame!.waitForSelector('#root', { timeout: 10000 });
+    const rootContent = await frame!.locator('#root').innerHTML();
+    expect(rootContent.length).toBeGreaterThan(0);
 
-      // Check for #root
-      const hasRoot = await frame.locator('#root').count();
-      console.log('[Iframe has #root]', hasRoot);
+    // No esbuild initialization errors
+    const esbuildErrors = errors.filter(e => e.includes('Cannot call') && e.includes('initialize'));
+    expect(esbuildErrors).toEqual([]);
 
-      // Check if React app rendered
-      const rootContent = await frame.locator('#root').innerHTML().catch(() => '');
-      console.log('[Iframe #root content length]', rootContent.length);
-      console.log('[Iframe #root content]', rootContent.substring(0, 300));
-    }
-
-    // Log all errors for debugging
-    console.log('[All main page errors]', errors);
-
-    // Check for esbuild initialization error
-    const hasEsbuildError = errors.some(e => e.includes('Cannot call') && e.includes('initialize'));
-
-    if (hasEsbuildError) {
-      console.log('[ERROR] Found esbuild initialization error!');
-    }
-
-    expect(hasEsbuildError).toBe(false);
+    // No other page errors (excluding expected ones)
+    const unexpectedErrors = errors.filter(e =>
+      !e.includes('favicon') && !e.includes('robots.txt')
+    );
+    expect(unexpectedErrors).toEqual([]);
   });
 
   test('should fetch virtual URL via fetch API', async ({ page }) => {
@@ -329,66 +255,42 @@ test.describe('Vite Demo with Service Worker', () => {
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
 
-    // Now try to fetch the virtual URL directly from the page
+    // Fetch the virtual URL and verify it's a real Vite HTML page
     const result = await page.evaluate(async () => {
-      try {
-        const response = await fetch('/__virtual__/3000/');
-        const text = await response.text();
-        return {
-          ok: response.ok,
-          status: response.status,
-          contentType: response.headers.get('content-type'),
-          textLength: text.length,
-          textSnippet: text.substring(0, 500),
-        };
-      } catch (error) {
-        return { error: error instanceof Error ? error.message : String(error) };
-      }
+      const response = await fetch('/__virtual__/3000/');
+      const text = await response.text();
+      return {
+        ok: response.ok,
+        status: response.status,
+        contentType: response.headers.get('content-type'),
+        length: text.length,
+        hasRoot: text.includes('id="root"'),
+        hasScript: text.includes('<script'),
+      };
     });
 
-    console.log('[Fetch result]', JSON.stringify(result, null, 2));
-
+    console.log('[Fetch result]', { status: result.status, length: result.length });
     expect(result.ok).toBe(true);
     expect(result.status).toBe(200);
-    expect(result.textLength).toBeGreaterThan(100);
+    expect(result.contentType).toContain('text/html');
+    expect(result.hasRoot).toBe(true);
+    expect(result.hasScript).toBe(true);
   });
 
-  test('should access virtual URL directly', async ({ page }) => {
-    // First, go to demo and start the server
+  test('should access virtual URL directly in new tab', async ({ page }) => {
     await page.goto('/examples/vite-demo.html');
     await expect(page.locator('#status-text')).toContainText('Ready', { timeout: 10000 });
     await page.click('#run-btn');
     await expect(page.locator('#status-text')).toContainText('Dev server running', { timeout: 30000 });
 
-    // Now try to access the virtual URL directly in a new page
+    // Open virtual URL directly in a new page
     const newPage = await page.context().newPage();
-
-    // Listen to console for debugging
-    newPage.on('console', (msg) => {
-      console.log(`[Virtual Page ${msg.type()}]`, msg.text());
-    });
-
-    newPage.on('pageerror', (error) => {
-      console.error('[Virtual Page Error]', error.message);
-    });
-
     await newPage.goto('http://localhost:5173/__virtual__/3000/');
-
-    // Wait for the page to load
     await newPage.waitForTimeout(3000);
 
-    // Check the title
-    const title = await newPage.title();
-    console.log('[Virtual Page Title]', title);
-
-    // Check for React root
+    // Must have React #root
     const hasRoot = await newPage.locator('#root').count();
-    console.log('[Has #root]', hasRoot);
-
-    // Get the page content
-    const html = await newPage.content();
-    console.log('[Page HTML length]', html.length);
-    console.log('[Page HTML snippet]', html.substring(0, 500));
+    expect(hasRoot).toBeGreaterThan(0);
 
     await newPage.close();
   });

@@ -26,8 +26,10 @@ const PACKAGE_JSON = {
     "next": "^14.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "ai": "^4.0.0",
-    "@ai-sdk/openai": "^1.0.0",
+    "ai": "^5.0.0",
+    "@ai-sdk/openai": "^2.0.0",
+    "@ai-sdk/react": "^2.0.0",
+    "zod": "^3.0.0",
   },
   devDependencies: {
     "@types/node": "^20",
@@ -173,53 +175,51 @@ export default function RootLayout({
 `);
 
   // Create home page with chat UI (App Router)
+  // Uses @ai-sdk/react useChat hook (AI SDK v5 API: sendMessage, status)
   vfs.writeFileSync('/app/page.tsx', `"use client";
 
 import React from 'react';
-import { useChat } from 'ai/react';
-
-// Get the virtual base path for API calls
-// The iframe runs at /__virtual__/PORT/ so we need to prefix API calls
-function getApiUrl(path: string): string {
-  const match = window.location.pathname.match(/^(\\/__virtual__\\/\\d+)/);
-  if (match) {
-    return match[1] + path;
-  }
-  return path;
-}
+import { useChat } from '@ai-sdk/react';
 
 export default function ChatPage() {
-  // Use the correct API URL based on the virtual base path
-  const apiUrl = React.useMemo(() => getApiUrl('/api/chat'), []);
+  var loc = typeof window !== 'undefined' ? window.location : null;
+  var basePath = loc
+    ? (loc.pathname.endsWith('/') ? loc.pathname.slice(0, -1) : loc.pathname)
+    : '';
 
-  const { messages, input, handleInputChange, handleSubmit, isLoading, error } = useChat({
-    api: apiUrl,
-    onResponse: (response) => {
-      console.log('[useChat] onResponse - status:', response.status, 'headers:', Object.fromEntries(response.headers.entries()));
-    },
-    onFinish: (message) => {
-      console.log('[useChat] onFinish - message:', message);
-    },
-    onError: (err) => {
-      console.error('[useChat] onError:', err);
-    },
+  var [input, setInput] = React.useState('');
+  var bottomRef = React.useRef(null);
+
+  var { messages, sendMessage, status, error } = useChat({
+    api: basePath + '/api/chat',
   });
 
-  // Debug: log messages changes
-  React.useEffect(() => {
-    console.log('[ChatPage] messages updated:', messages.length, messages.map(m => ({ role: m.role, contentLength: m.content.length })));
+  var isLoading = status === 'submitted' || status === 'streaming';
+
+  React.useEffect(function() {
+    if (bottomRef.current) bottomRef.current.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+    sendMessage({ role: 'user', content: input });
+    setInput('');
+  }
 
-  // Auto-scroll to bottom when new messages arrive
-  React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  function getMessageText(msg) {
+    if (typeof msg.content === 'string') return msg.content;
+    if (Array.isArray(msg.parts)) {
+      return msg.parts
+        .filter(function(p) { return p.type === 'text'; })
+        .map(function(p) { return p.text; })
+        .join('');
+    }
+    return '';
+  }
 
   return (
     <div className="chat-container">
-      {/* Welcome message when no messages */}
       {messages.length === 0 && (
         <div className="text-center py-12">
           <div className="text-6xl mb-4">💬</div>
@@ -233,30 +233,28 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Messages list */}
       <div className="space-y-4 pb-32">
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={\`message-bubble \${
-              message.role === 'user' ? 'message-user' : 'message-assistant'
-            }\`}
-          >
-            <div className="flex items-start gap-3">
-              <span className="text-lg">
-                {message.role === 'user' ? '👤' : '🤖'}
-              </span>
-              <div className="flex-1">
-                <p className="font-medium text-sm opacity-70 mb-1">
-                  {message.role === 'user' ? 'You' : 'Assistant'}
-                </p>
-                <div className="whitespace-pre-wrap">{message.content}</div>
+        {messages.map(function(message) {
+          return (
+            <div
+              key={message.id}
+              className={'message-bubble ' + (message.role === 'user' ? 'message-user' : 'message-assistant')}
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-lg">
+                  {message.role === 'user' ? '👤' : '🤖'}
+                </span>
+                <div className="flex-1">
+                  <p className="font-medium text-sm opacity-70 mb-1">
+                    {message.role === 'user' ? 'You' : 'Assistant'}
+                  </p>
+                  <div className="whitespace-pre-wrap">{getMessageText(message)}</div>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
-        {/* Loading indicator - only show when waiting for response to start streaming */}
         {isLoading && messages.length > 0 && messages[messages.length - 1].role === 'user' && (
           <div className="message-bubble message-assistant">
             <div className="flex items-start gap-3">
@@ -269,7 +267,6 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* Error message */}
         {error && (
           <div className="message-bubble bg-red-100 text-red-700">
             <div className="flex items-start gap-3">
@@ -282,16 +279,15 @@ export default function ChatPage() {
           </div>
         )}
 
-        <div ref={messagesEndRef} />
+        <div ref={bottomRef} />
       </div>
 
-      {/* Input form */}
       <div className="input-container">
         <form onSubmit={handleSubmit} className="flex gap-3">
           <input
             type="text"
             value={input}
-            onChange={handleInputChange}
+            onChange={function(e) { setInput(e.target.value); }}
             placeholder="Type your message..."
             disabled={isLoading}
             className="flex-1 px-4 py-3 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:cursor-not-allowed"
@@ -301,17 +297,7 @@ export default function ChatPage() {
             disabled={isLoading || !input.trim()}
             className="px-6 py-3 bg-blue-500 text-white font-medium rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
           >
-            {isLoading ? (
-              <span className="flex items-center gap-2">
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Sending
-              </span>
-            ) : (
-              'Send'
-            )}
+            {isLoading ? 'Sending...' : 'Send'}
           </button>
         </form>
         <p className="text-xs text-gray-400 mt-2 text-center">
@@ -323,179 +309,73 @@ export default function ChatPage() {
 }
 `);
 
-  // Create API route for chat (Pages Router - works in our environment)
-  // Uses CORS proxy to call OpenAI from browser
-  vfs.writeFileSync('/pages/api/chat.ts', `/**
- * AI Chat API Route
- *
- * This endpoint handles chat requests using the Vercel AI SDK.
- * It uses a CORS proxy (corsproxy.io) to make OpenAI API calls
- * from the browser environment.
- */
+  // Create API route for chat (Pages Router — proven streaming pattern)
+  // Uses real AI SDK with CORS proxy for OpenAI calls from browser.
+  // For this simple chatbot (no tools) we skip convertToModelMessages and
+  // pass {role, content} CoreMessages directly to streamText.
+  vfs.writeFileSync('/pages/api/chat.ts', `import { streamText } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
 
-import type { NextApiRequest, NextApiResponse } from 'next';
+var CORS_PROXY = process.env.CORS_PROXY_URL || 'https://corsproxy.io/?';
 
-// Get API key from environment and sanitize it
-const getApiKey = () => {
-  // Debug: log what we're seeing
-  console.log('[API /chat] getApiKey called');
-  console.log('[API /chat] typeof process:', typeof process);
-  console.log('[API /chat] process.env keys:', typeof process !== 'undefined' && process.env ? Object.keys(process.env) : 'N/A');
+var openai = createOpenAI({
+  apiKey: process.env.OPENAI_API_KEY || '',
+  fetch: function(url, init) {
+    var proxiedUrl = CORS_PROXY + encodeURIComponent(String(url));
+    return globalThis.fetch(proxiedUrl, init);
+  },
+});
 
-  // Check process.env (set by demo entry)
-  if (typeof process !== 'undefined' && process.env?.OPENAI_API_KEY) {
-    const rawKey = process.env.OPENAI_API_KEY;
-    console.log('[API /chat] Raw key length:', rawKey?.length);
-    console.log('[API /chat] Raw key starts with:', rawKey?.substring(0, 10));
-    console.log('[API /chat] Raw key ends with:', rawKey?.substring(rawKey.length - 10));
-
-    // Sanitize: trim whitespace and remove any non-ASCII characters
-    // This prevents "String contains non ISO-8859-1 code point" errors
-    const key = rawKey
-      .trim()
-      .replace(/[^\x00-\x7F]/g, ''); // Remove non-ASCII characters
-
-    console.log('[API /chat] Sanitized key length:', key?.length);
-    return key || null;
+// Extract text content from a UIMessage (handles both content string and parts array)
+function getContent(m) {
+  if (typeof m.content === 'string' && m.content) return m.content;
+  if (Array.isArray(m.parts)) {
+    return m.parts
+      .filter(function(p) { return p.type === 'text'; })
+      .map(function(p) { return p.text; })
+      .join('');
   }
-  console.log('[API /chat] No OPENAI_API_KEY found in process.env');
-  return null;
-};
+  return '';
+}
 
-// CORS proxy for OpenAI API calls from browser
-const CORS_PROXY = 'https://corsproxy.io/?';
-const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = getApiKey();
-  if (!apiKey) {
+  if (!process.env.OPENAI_API_KEY) {
     return res.status(500).json({
       error: 'OpenAI API key not configured. Please enter your API key in the demo panel.'
     });
   }
 
   try {
-    const { messages } = req.body;
-
-    if (!messages || !Array.isArray(messages)) {
+    var uiMessages = req.body.messages;
+    if (!uiMessages || !Array.isArray(uiMessages)) {
       return res.status(400).json({ error: 'Invalid messages format' });
     }
 
-    // Format messages for OpenAI API
-    const formattedMessages = messages.map((m: any) => ({
-      role: m.role,
-      content: m.content,
-    }));
-
-    // Make request to OpenAI via CORS proxy
-    const response = await fetch(CORS_PROXY + encodeURIComponent(OPENAI_API_URL), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': \`Bearer \${apiKey}\`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: formattedMessages,
-        stream: true,
-      }),
+    // Convert UIMessages to simple CoreMessages for streamText
+    var messages = uiMessages.map(function(m) {
+      return { role: m.role, content: getContent(m) };
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('OpenAI API error:', errorText);
-      return res.status(response.status).json({
-        error: \`OpenAI API error: \${response.statusText}\`
-      });
-    }
+    var result = streamText({
+      model: openai('gpt-4o-mini'),
+      messages: messages,
+      onError: function(info) {
+        console.error('[API /chat] Stream error:', info.error);
+      },
+    });
 
-    // Set up streaming response headers
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Transfer-Encoding', 'chunked');
-    res.setHeader('Cache-Control', 'no-cache');
-
-    // Stream the response using AI SDK data stream format
-    // Format: 0:"text chunk"\\n (text deltas)
-    const reader = response.body?.getReader();
-    if (!reader) {
-      return res.status(500).json({ error: 'Failed to get response stream' });
-    }
-
-    console.log('[API /chat] Starting to stream response...');
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let chunkCount = 0;
-
-    // Collect all chunks first (CORS proxy may buffer entire response)
-    const pendingChunks: string[] = [];
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        console.log('[API /chat] OpenAI stream done');
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\\n');
-      buffer = lines.pop() || '';
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          if (data === '[DONE]') {
-            console.log('[API /chat] Received [DONE] from OpenAI');
-            continue;
-          }
-          try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              // AI SDK data stream format: 0:"text"\\n
-              const chunk = \`0:"\${content.replace(/"/g, '\\\\"').replace(/\\n/g, '\\\\n')}"\\n\`;
-              pendingChunks.push(chunk);
-            }
-          } catch (e) {
-            // Ignore parse errors for incomplete chunks
-          }
-        }
-      }
-    }
-
-    console.log('[API /chat] Collected', pendingChunks.length, 'chunks, streaming with delays...');
-
-    // Helper to create delay
-    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-    // Stream chunks with delays to ensure they arrive separately
-    // The CORS proxy buffers the entire OpenAI response, so we simulate streaming
-    // by writing chunks with delays. 50ms gives the message channel time to process
-    // each chunk before the next one arrives.
-    for (const chunk of pendingChunks) {
-      chunkCount++;
-      console.log('[API /chat] Writing chunk', chunkCount);
-      res.write(chunk);
-      // Longer delay to ensure message channel processes each chunk separately
-      await delay(50);
-    }
-
-    // End the stream with finish reason
-    console.log('[API /chat] Writing finish message, total chunks:', chunkCount);
-    res.write('d:{"finishReason":"stop"}\\n');
-    res.end();
-
+    return result.toUIMessageStreamResponse();
   } catch (error) {
     console.error('Chat API error:', error);
-    res.status(500).json({
-      error: error instanceof Error ? error.message : 'Internal server error'
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: error && error.message ? error.message : 'Internal server error'
+      });
+    }
   }
 }
 `);

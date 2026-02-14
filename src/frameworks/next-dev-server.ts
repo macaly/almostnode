@@ -50,6 +50,8 @@ import {
   createBuiltinModules,
   executeApiHandler,
 } from './next-api-handler';
+import { createVfsRequire, type VfsModule } from './vfs-require';
+import { bundleNpmModuleForBrowser, clearNpmBundleCache, initNpmServe } from './npm-serve';
 import { ESBUILD_WASM_ESM_CDN, ESBUILD_WASM_BINARY_CDN } from '../config/cdn';
 
 // Check if we're in a real browser environment (not jsdom or Node.js)
@@ -129,6 +131,12 @@ export interface NextDevServerOptions extends DevServerOptions {
   additionalImportMap?: Record<string, string>;
   /** Additional packages that should NOT be redirected to esm.sh CDN (e.g., packages in the import map) */
   additionalLocalPackages?: string[];
+  /** Extra modules to inject into API route handlers (available via require()) */
+  apiModules?: Record<string, unknown>;
+  /** Pin dependency versions in esm.sh URLs (e.g., 'zod@3.23.8' adds &deps=zod@3.23.8) */
+  esmShDeps?: string;
+  /** CORS proxy URL prefix for API route handlers (available as process.env.CORS_PROXY_URL) */
+  corsProxy?: string;
 }
 
 /**
@@ -182,6 +190,38 @@ export class NextDevServer extends DevServer {
   /** Path aliases from tsconfig.json (e.g., @/* -> ./*) */
   private pathAliases: Map<string, string> = new Map();
 
+  /** Shared module cache for VFS-based require (persists across API requests) */
+  private vfsModuleCache: Record<string, VfsModule> = {};
+
+  /** Set an environment variable available to API route handlers */
+  setEnv(key: string, value: string): void {
+    if (!this.options.env) this.options.env = {};
+    this.options.env[key] = value;
+  }
+
+  /**
+   * Create a VFS-based require function for API route handlers.
+   * Resolves npm packages from /node_modules/ in VFS.
+   */
+  private createApiVfsRequire(builtinModules: Record<string, unknown>): (id: string) => unknown {
+    const env: Record<string, string> = { ...this.options.env };
+    if (this.options.corsProxy) {
+      env.CORS_PROXY_URL = this.options.corsProxy;
+    }
+    const { require: vfsRequire } = createVfsRequire(this.vfs, '/', {
+      builtinModules,
+      process: {
+        env,
+        cwd: () => '/',
+        platform: 'browser',
+        version: 'v18.0.0',
+        versions: { node: '18.0.0' },
+      },
+      moduleCache: this.vfsModuleCache,
+    });
+    return vfsRequire;
+  }
+
   /** Cached Tailwind config script (injected before CDN) */
   private tailwindConfigScript: string = '';
 
@@ -206,6 +246,16 @@ export class NextDevServer extends DevServer {
   constructor(vfs: VirtualFS, options: NextDevServerOptions) {
     super(vfs, options);
     this.options = options;
+
+    // Initialize esbuild VFS so /_npm/ bundling can resolve from node_modules
+    initNpmServe(vfs);
+
+    // Inject CORS proxy URL into env so API handlers get it via process.env
+    if (options.corsProxy) {
+      if (!this.options.env) this.options.env = {};
+      this.options.env.CORS_PROXY_URL = options.corsProxy;
+    }
+
     this.pagesDir = options.pagesDir || '/pages';
     this.appDir = options.appDir || '/app';
     this.publicDir = options.publicDir || '/public';
@@ -490,6 +540,11 @@ export class NextDevServer extends DevServer {
       return this.serveStaticAsset(pathname);
     }
 
+    // Serve npm packages bundled from VFS node_modules
+    if (pathname.startsWith('/_npm/')) {
+      return this.serveNpmModule(pathname);
+    }
+
     // App Router API routes (route.ts/route.js) - check before Pages Router API routes
     if (this.useAppRouter) {
       const appRouteFile = resolveAppRouteHandler(this.appDir, pathname, this.routeCtx);
@@ -593,7 +648,7 @@ export class NextDevServer extends DevServer {
     const route = resolveAppRoute(this.appDir, pathname, this.routeCtx);
 
     const info = route
-      ? { params: route.params, found: true }
+      ? { params: route.params, found: true, page: route.page, layouts: route.layouts }
       : { params: {}, found: false };
 
     const json = JSON.stringify(info);
@@ -707,7 +762,28 @@ export class NextDevServer extends DevServer {
       const builtins = await createBuiltinModules(
         () => import('../shims/fs').then(m => m.createFsShim(this.vfs))
       );
-      await executeApiHandler(transformed, req, res, this.options.env, builtins);
+      if (this.options.apiModules) {
+        Object.assign(builtins, this.options.apiModules);
+      }
+      const vfsRequire = this.createApiVfsRequire(builtins);
+      const result = await executeApiHandler(transformed, req, res, this.options.env, builtins, vfsRequire);
+
+      // If the handler returned a Response object, convert it to ResponseData
+      if (result instanceof Response) {
+        const respHeaders: Record<string, string> = {};
+        result.headers.forEach((value: string, key: string) => {
+          respHeaders[key] = value;
+        });
+        const bodyBytes = result.body
+          ? new Uint8Array(await new Response(result.body).arrayBuffer())
+          : new Uint8Array(0);
+        return {
+          statusCode: result.status,
+          statusMessage: result.statusText || 'OK',
+          headers: respHeaders,
+          body: Buffer.from(bodyBytes),
+        };
+      }
 
       // Wait for async handlers (like those using https.get with callbacks)
       // with a reasonable timeout
@@ -750,17 +826,23 @@ export class NextDevServer extends DevServer {
 
       // Create module context and execute the route handler
       const builtinModules = await createBuiltinModules();
+      if (this.options.apiModules) {
+        Object.assign(builtinModules, this.options.apiModules);
+      }
+      const vfsRequire = this.createApiVfsRequire(builtinModules);
 
       const require = (id: string): unknown => {
         const modId = id.startsWith('node:') ? id.slice(5) : id;
         if (builtinModules[modId]) return builtinModules[modId];
-        throw new Error(`Module not found: ${id}`);
+        return vfsRequire(modId);
       };
 
       const moduleObj = { exports: {} as Record<string, unknown> };
       const exports = moduleObj.exports;
+      const env: Record<string, string> = { ...this.options.env };
+      if (this.options.corsProxy) env.CORS_PROXY_URL = this.options.corsProxy;
       const process = {
-        env: { ...this.options.env },
+        env,
         cwd: () => '/',
         platform: 'browser',
         version: 'v18.0.0',
@@ -861,9 +943,25 @@ export class NextDevServer extends DevServer {
     onEnd: () => void
   ): Promise<void> {
     const urlObj = new URL(url, 'http://localhost');
-    const pathname = urlObj.pathname;
+    let pathname = urlObj.pathname;
 
-    // Only handle API routes
+    // Strip virtual prefix if present (same as handleRequest)
+    const virtualPrefixMatch = pathname.match(/^\/__virtual__\/\d+/);
+    if (virtualPrefixMatch) {
+      pathname = pathname.slice(virtualPrefixMatch[0].length) || '/';
+    }
+
+    // Check App Router route handlers first (they return Response objects with ReadableStream bodies)
+    if (this.useAppRouter) {
+      const appRouteFile = resolveAppRouteHandler(this.appDir, pathname, this.routeCtx);
+      if (appRouteFile) {
+        return this.handleAppRouteHandlerStreaming(
+          method, pathname, headers, body, appRouteFile, urlObj.search, onStart, onChunk, onEnd
+        );
+      }
+    }
+
+    // Pages Router API routes
     if (!pathname.startsWith('/api/')) {
       onStart(404, 'Not Found', { 'Content-Type': 'application/json' });
       onChunk(JSON.stringify({ error: 'Not found' }));
@@ -890,9 +988,34 @@ export class NextDevServer extends DevServer {
       const builtins = await createBuiltinModules(
         () => import('../shims/fs').then(m => m.createFsShim(this.vfs))
       );
-      await executeApiHandler(transformed, req, res, this.options.env, builtins);
+      if (this.options.apiModules) {
+        Object.assign(builtins, this.options.apiModules);
+      }
+      const vfsRequire = this.createApiVfsRequire(builtins);
+      const result = await executeApiHandler(transformed, req, res, this.options.env, builtins, vfsRequire);
 
-      // Wait for the response to end
+      // If the handler returned a Response object (Web API style), stream it
+      // directly. This lets Pages Router handlers use `return new Response()`
+      // or return AI SDK's `toUIMessageStreamResponse()` without manual SSE splitting.
+      if (result instanceof Response) {
+        const respHeaders: Record<string, string> = {};
+        result.headers.forEach((value: string, key: string) => {
+          respHeaders[key] = value;
+        });
+        onStart(result.status, result.statusText || 'OK', respHeaders);
+        if (result.body) {
+          const reader = result.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            onChunk(value);
+          }
+        }
+        onEnd();
+        return;
+      }
+
+      // Wait for the response to end (classic req/res pattern)
       if (!res.isEnded()) {
         const timeout = new Promise<void>((_, reject) => {
           setTimeout(() => reject(new Error('API handler timeout')), 30000);
@@ -901,6 +1024,123 @@ export class NextDevServer extends DevServer {
       }
     } catch (error) {
       console.error('[NextDevServer] Streaming API error:', error);
+      onStart(500, 'Internal Server Error', { 'Content-Type': 'application/json' });
+      onChunk(JSON.stringify({ error: error instanceof Error ? error.message : 'Internal Server Error' }));
+      onEnd();
+    }
+  }
+
+  /**
+   * Handle App Router route handler with streaming support.
+   * Executes the handler, and if it returns a Response with a ReadableStream body,
+   * pipes the stream through the onStart/onChunk/onEnd callbacks.
+   */
+  private async handleAppRouteHandlerStreaming(
+    method: string,
+    pathname: string,
+    headers: Record<string, string>,
+    body: Buffer | undefined,
+    routeFile: string,
+    search: string | undefined,
+    onStart: (statusCode: number, statusMessage: string, headers: Record<string, string>) => void,
+    onChunk: (chunk: string | Uint8Array) => void,
+    onEnd: () => void
+  ): Promise<void> {
+    try {
+      const code = this.vfs.readFileSync(routeFile, 'utf8');
+      const transformed = await this.transformApiHandler(code, routeFile);
+
+      const builtinModules = await createBuiltinModules(
+        () => import('../shims/fs').then(m => m.createFsShim(this.vfs))
+      );
+      if (this.options.apiModules) {
+        Object.assign(builtinModules, this.options.apiModules);
+      }
+      const vfsRequire = this.createApiVfsRequire(builtinModules);
+
+      const require = (id: string): unknown => {
+        const modId = id.startsWith('node:') ? id.slice(5) : id;
+        if (builtinModules[modId]) return builtinModules[modId];
+        return vfsRequire(modId);
+      };
+
+      const moduleObj = { exports: {} as Record<string, unknown> };
+      const exports = moduleObj.exports;
+      const env: Record<string, string> = { ...this.options.env };
+      if (this.options.corsProxy) env.CORS_PROXY_URL = this.options.corsProxy;
+      const process = {
+        env,
+        cwd: () => '/',
+        platform: 'browser',
+        version: 'v18.0.0',
+        versions: { node: '18.0.0' },
+      };
+
+      const fn = new Function('exports', 'require', 'module', 'process', transformed);
+      fn(exports, require, moduleObj, process);
+
+      // Get the handler for the HTTP method
+      const methodUpper = method.toUpperCase();
+      const handler = moduleObj.exports[methodUpper] || moduleObj.exports[methodUpper.toLowerCase()];
+
+      if (typeof handler !== 'function') {
+        onStart(405, 'Method Not Allowed', { 'Content-Type': 'application/json' });
+        onChunk(JSON.stringify({ error: `Method ${method} not allowed` }));
+        onEnd();
+        return;
+      }
+
+      // Create a Web API Request object
+      const requestUrl = new URL(pathname + (search || ''), 'http://localhost');
+      const requestInit: RequestInit = {
+        method: methodUpper,
+        headers: new Headers(headers),
+      };
+      if (body && methodUpper !== 'GET' && methodUpper !== 'HEAD') {
+        requestInit.body = body;
+      }
+      const request = new Request(requestUrl.toString(), requestInit);
+
+      // Extract route params
+      const route = resolveAppRoute(this.appDir, pathname, this.routeCtx);
+      const params = route?.params || {};
+
+      // Call the handler
+      const response = await handler(request, { params: Promise.resolve(params) });
+
+      if (response instanceof Response) {
+        const respHeaders: Record<string, string> = {};
+        response.headers.forEach((value: string, key: string) => {
+          respHeaders[key] = value;
+        });
+
+        if (response.body) {
+          // Stream the response body through callbacks
+          onStart(response.status, response.statusText || 'OK', respHeaders);
+          const reader = response.body.getReader();
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              onChunk(value);
+            }
+          } finally {
+            onEnd();
+          }
+        } else {
+          // No body
+          onStart(response.status, response.statusText || 'OK', respHeaders);
+          onEnd();
+        }
+      } else {
+        // Non-Response return value
+        const json = JSON.stringify(response || {});
+        onStart(200, 'OK', { 'Content-Type': 'application/json; charset=utf-8' });
+        onChunk(json);
+        onEnd();
+      }
+    } catch (error) {
+      console.error('[NextDevServer] App Route streaming error:', error);
       onStart(500, 'Internal Server Error', { 'Content-Type': 'application/json' });
       onChunk(JSON.stringify({ error: error instanceof Error ? error.message : 'Internal Server Error' }));
       onEnd();
@@ -1161,8 +1401,82 @@ export class NextDevServer extends DevServer {
     return deps;
   }
 
+  /** Cached set of packages installed in VFS node_modules */
+  private _installedPackages: Set<string> | undefined;
+
+  /** Scan /node_modules/ in VFS to build a set of installed package names. */
+  private getInstalledPackages(): Set<string> {
+    if (this._installedPackages) return this._installedPackages;
+    const pkgs = new Set<string>();
+    const nmDir = '/node_modules';
+    try {
+      if (!this.vfs.existsSync(nmDir)) {
+        this._installedPackages = pkgs;
+        return pkgs;
+      }
+      const entries = this.vfs.readdirSync(nmDir) as string[];
+      for (const entry of entries) {
+        if (entry.startsWith('.')) continue;
+        if (entry.startsWith('@')) {
+          // Scoped package — list sub-entries
+          const scopeDir = nmDir + '/' + entry;
+          try {
+            const scopeEntries = this.vfs.readdirSync(scopeDir) as string[];
+            for (const sub of scopeEntries) {
+              pkgs.add(entry + '/' + sub);
+            }
+          } catch { /* ignore */ }
+        } else {
+          pkgs.add(entry);
+        }
+      }
+    } catch { /* ignore */ }
+    this._installedPackages = pkgs;
+    return pkgs;
+  }
+
+  /** Invalidate installed packages cache (call after npm install). */
+  clearInstalledPackagesCache(): void {
+    this._installedPackages = undefined;
+    this._dependencies = undefined;
+    clearNpmBundleCache();
+  }
+
+  /**
+   * Serve a bundled npm module from VFS node_modules.
+   * /_npm/@ai-sdk/react → esbuild bundles @ai-sdk/react as ESM
+   */
+  private async serveNpmModule(pathname: string): Promise<ResponseData> {
+    const specifier = pathname.slice('/_npm/'.length);
+    if (!specifier) {
+      return this.notFound(pathname);
+    }
+
+    try {
+      const code = await bundleNpmModuleForBrowser(specifier);
+      return {
+        statusCode: 200,
+        statusMessage: 'OK',
+        headers: {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        },
+        body: Buffer.from(code),
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[NextDevServer] Failed to bundle npm module '${specifier}':`, msg);
+      return {
+        statusCode: 500,
+        statusMessage: 'Internal Server Error',
+        headers: { 'Content-Type': 'text/plain' },
+        body: Buffer.from(`Failed to bundle '${specifier}': ${msg}`),
+      };
+    }
+  }
+
   private redirectNpmImports(code: string): string {
-    return _redirectNpmImports(code, this.options.additionalLocalPackages, this.getDependencies());
+    return _redirectNpmImports(code, this.options.additionalLocalPackages, this.getDependencies(), this.options.esmShDeps, this.getInstalledPackages());
   }
 
   private stripCssImports(code: string, currentFile?: string): string {

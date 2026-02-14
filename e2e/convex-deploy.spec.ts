@@ -26,6 +26,13 @@ test.describe('Convex Deployment', () => {
 
     // Attach logs to test info for debugging
     (page as any).__consoleLogs = consoleLogs;
+
+    // Navigate and wait for init, then dismiss setup overlay so #deployBtn is clickable
+    await page.goto('/examples/demo-convex-app.html');
+    await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
+    await page.evaluate(() => {
+      document.getElementById('setupOverlay')?.classList.add('hidden');
+    });
   });
 
   test('should deploy schema and functions to Convex', async ({ page }) => {
@@ -36,11 +43,6 @@ test.describe('Convex Deployment', () => {
       return;
     }
 
-    // Go to the demo page
-    await page.goto('/examples/demo-convex-app.html');
-
-    // Wait for initialization
-    await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
     console.log('✓ Demo initialized and running');
 
     // Check initial log messages
@@ -147,11 +149,6 @@ test.describe('Convex Deployment', () => {
   });
 
   test('should handle invalid deploy key', async ({ page }) => {
-    await page.goto('/examples/demo-convex-app.html');
-
-    // Wait for initialization
-    await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
-
     // Enter an invalid key
     await page.fill('#convexKey', 'invalid-key');
     await page.click('#deployBtn');
@@ -165,11 +162,6 @@ test.describe('Convex Deployment', () => {
   });
 
   test('should show error for empty deploy key', async ({ page }) => {
-    await page.goto('/examples/demo-convex-app.html');
-
-    // Wait for initialization
-    await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
-
     // Click deploy without entering key
     await page.click('#deployBtn');
 
@@ -185,11 +177,6 @@ test.describe('Convex Deployment', () => {
       test.skip();
       return;
     }
-
-    await page.goto('/examples/demo-convex-app.html');
-
-    // Wait for initialization
-    await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
 
     // First deployment
     await page.fill('#convexKey', deployKey);
@@ -235,10 +222,6 @@ test.describe('Convex Deployment', () => {
       return;
     }
 
-    await page.goto('/examples/demo-convex-app.html');
-
-    // Wait for initialization
-    await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
     console.log('✓ Demo initialized');
 
     // 1. Initial deployment
@@ -351,9 +334,6 @@ test.describe('Convex Deployment', () => {
     const deploymentName = keyMatch![2];
     const convexApiBase = `https://${deploymentName}.convex.cloud`;
 
-    // 1. Navigate and wait for app to initialize
-    await page.goto('/examples/demo-convex-app.html');
-    await expect(page.locator('#statusText')).toContainText('Running', { timeout: 60000 });
     console.log('✓ Demo initialized');
 
     // 2. Initial deployment (baseline)
@@ -386,7 +366,7 @@ test.describe('Convex Deployment', () => {
     console.log('✓ Re-deployment complete');
 
     // Wait for functions to be live on the backend
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(5000);
 
     // 5. Call the Convex HTTP API to create a test todo
     const testTitle = `e2e-test-${Date.now()}`;

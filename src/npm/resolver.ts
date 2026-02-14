@@ -359,7 +359,21 @@ async function resolvePackage(
     resolved.set(packageName, resolvedPackage);
 
     // Resolve dependencies in parallel
-    const deps = { ...versionData.dependencies };
+    // Include non-optional peerDependencies (npm v7+ behavior).
+    // Peer deps marked optional in peerDependenciesMeta are skipped.
+    const deps: Record<string, string> = {};
+
+    if (versionData.peerDependencies) {
+      const meta = versionData.peerDependenciesMeta || {};
+      for (const [name, range] of Object.entries(versionData.peerDependencies)) {
+        if (!meta[name]?.optional) {
+          deps[name] = range;
+        }
+      }
+    }
+
+    // Regular dependencies override peer deps
+    Object.assign(deps, versionData.dependencies);
 
     if (options.includeOptional && versionData.optionalDependencies) {
       Object.assign(deps, versionData.optionalDependencies);

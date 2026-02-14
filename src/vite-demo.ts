@@ -61,8 +61,7 @@ export default defineConfig({
 
   // Create index.html for React app
   // Note: Use relative paths (./src/) so they work with /__virtual__/port/ URLs
-  // Import map resolves bare imports (react, react-dom) to CDN URLs
-  // IMPORTANT: Use ?dev to get development builds with DevTools/React Refresh support
+  // ViteDevServer automatically injects a React import map if none is present
   vfs.writeFileSync(
     '/index.html',
     `<!DOCTYPE html>
@@ -71,16 +70,6 @@ export default defineConfig({
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>React + Vite Browser Demo</title>
-  <script type="importmap">
-  {
-    "imports": {
-      "react": "https://esm.sh/react@18.2.0?dev",
-      "react/": "https://esm.sh/react@18.2.0&dev/",
-      "react-dom": "https://esm.sh/react-dom@18.2.0?dev",
-      "react-dom/": "https://esm.sh/react-dom@18.2.0&dev/"
-    }
-  }
-  </script>
 </head>
 <body>
   <div id="root"></div>

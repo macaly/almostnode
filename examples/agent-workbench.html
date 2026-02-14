@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Workbench — almostnode</title>
+    <link rel="stylesheet" href="./shared-styles.css" />
+    <style>
+      .layout {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 44px);
+      }
+
+      /* ── Loading state ── */
+      .loading-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--text-dim);
+      }
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 12px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      /* ── Console (bottom) ── */
+      .console-panel {
+        border-top: 1px solid var(--border);
+        height: 120px;
+        display: flex;
+        flex-direction: column;
+        background: var(--surface);
+      }
+      .console-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 6px 16px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(0,0,0,0.2);
+      }
+
+      /* ── Setup overlay ── */
+      .setup-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.85);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 100;
+      }
+      .setup-overlay.hidden { display: none; }
+      .setup-dialog {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        padding: 32px;
+        max-width: 440px;
+        width: 90%;
+      }
+      .setup-dialog h2 {
+        font-family: var(--mono);
+        font-size: 0.9rem;
+        color: var(--text-bright);
+        margin-bottom: 8px;
+      }
+      .setup-dialog p {
+        font-size: 0.8rem;
+        color: var(--text-dim);
+        line-height: 1.6;
+        margin-bottom: 16px;
+      }
+      .setup-dialog .privacy-note {
+        font-family: var(--mono);
+        font-size: 0.65rem;
+        color: var(--accent-dim);
+        background: var(--accent-bg);
+        border: 1px solid var(--accent-border);
+        padding: 8px 12px;
+        margin-bottom: 16px;
+        line-height: 1.5;
+      }
+      .setup-dialog input {
+        width: 100%;
+        padding: 10px 12px;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        border: 1px solid var(--border);
+        background: var(--black);
+        color: var(--text);
+        margin-bottom: 12px;
+        outline: none;
+      }
+      .setup-dialog input:focus { border-color: var(--accent-border); }
+      .setup-dialog input::placeholder { color: var(--text-dim); }
+      .setup-dialog button {
+        width: 100%;
+        padding: 10px;
+        font-family: var(--mono);
+        font-size: 0.78rem;
+        font-weight: 600;
+        background: var(--accent);
+        color: var(--black);
+        border: none;
+        cursor: pointer;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .setup-dialog button:hover { background: #00ffaa; }
+      .setup-dialog button:disabled { opacity: 0.4; cursor: not-allowed; }
+    </style>
+  </head>
+  <body>
+    <div class="demo-topbar">
+      <a href="../index.html" class="back">&larr; demos</a>
+      <span class="sep">/</span>
+      <a href="../index.html" class="logo">almostnode</a>
+      <span class="sep">/</span>
+      <span class="title">Agent Workbench</span>
+      <span class="tag">next.js &middot; ai sdk &middot; streamText &middot; tool-calling</span>
+    </div>
+
+    <div class="layout">
+      <!-- App iframe (the entire chat + preview runs inside virtual Next.js) -->
+      <div id="previewContainer" style="flex:1;display:flex;flex-direction:column;">
+        <div class="loading-content">
+          <div class="spinner"></div>
+          <p>Starting dev server...</p>
+        </div>
+      </div>
+
+      <!-- Console -->
+      <div class="console-panel">
+        <div class="console-header">
+          <span class="panel-label">Console</span>
+        </div>
+        <div class="terminal" id="logs"></div>
+      </div>
+    </div>
+
+    <!-- Setup Overlay -->
+    <div class="setup-overlay" id="setupOverlay">
+      <div class="setup-dialog">
+        <h2>OpenAI API Key Required</h2>
+        <p>This demo uses an AI coding agent powered by OpenAI. Enter your API key to get started.</p>
+        <div class="privacy-note">Your key stays in your browser and is sent directly to OpenAI via a CORS proxy. It is never stored or sent to our servers.</div>
+        <input type="password" id="setupKeyInput" placeholder="sk-..." autofocus />
+        <button id="setupKeyBtn" disabled>Start Agent</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/agent-workbench-entry.ts"></script>
+  </body>
+</html>

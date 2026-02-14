@@ -1,23 +1,24 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Next.js Demo with Service Worker', () => {
+  let pageErrors: string[] = [];
+
   test.beforeEach(async ({ page }) => {
-    // Listen to console messages for debugging
+    pageErrors = [];
     page.on('console', (msg) => {
       console.log(`[Browser ${msg.type()}]`, msg.text());
     });
-
-    // Listen to page errors
     page.on('pageerror', (error) => {
       console.error('[Page Error]', error.message);
+      pageErrors.push(error.message);
     });
   });
 
   test('should load the demo page', async ({ page }) => {
     await page.goto('/examples/next-demo.html');
 
-    // Check the title
-    await expect(page.locator('h1')).toContainText('Next.js');
+    // Check the title in topbar
+    await expect(page.locator('.demo-topbar .title')).toContainText('Next.js');
 
     // Check that buttons exist
     await expect(page.locator('#save-btn')).toBeVisible();
@@ -75,15 +76,13 @@ test.describe('Next.js Demo with Service Worker', () => {
     const iframeHandle = await iframe.elementHandle();
     const frame = await iframeHandle?.contentFrame();
 
-    if (frame) {
-      const html = await frame.content();
-      console.log('[Iframe HTML length]', html.length);
+    expect(frame).toBeTruthy();
 
-      // Check for __next container
-      const hasNext = await frame.locator('#__next').count();
-      console.log('[Iframe has #__next]', hasNext);
-      expect(hasNext).toBeGreaterThan(0);
-    }
+    // Check for __next container — proves React rendered
+    await frame!.waitForSelector('#__next', { timeout: 10000 });
+    const hasNext = await frame!.locator('#__next').count();
+    console.log('[Iframe has #__next]', hasNext);
+    expect(hasNext).toBeGreaterThan(0);
   });
 
   test('should show console output', async ({ page }) => {
@@ -94,7 +93,7 @@ test.describe('Next.js Demo with Service Worker', () => {
 
     // Check console output has initialization messages
     const output = page.locator('#output');
-    await expect(output).toContainText('Demo ready');
+    await expect(output).toContainText('Click Start Preview to launch');
   });
 
   test('should load editor with file content', async ({ page }) => {
@@ -145,21 +144,13 @@ test.describe('Next.js Demo with Service Worker', () => {
     const iframeHandle = await iframe.elementHandle();
     const frame = await iframeHandle?.contentFrame();
 
-    if (frame) {
-      // Wait for React to render (with longer timeout and error handling)
-      try {
-        await frame.waitForSelector('h1', { timeout: 15000 });
-        const h1Text = await frame.locator('h1').first().textContent();
-        console.log('[Initial H1]', h1Text);
-        // The h1 should exist if React rendered
-        expect(h1Text).toBeTruthy();
-      } catch {
-        // If React didn't render in time, check that at least the page was served
-        const html = await frame.content();
-        console.log('[Fallback - checking HTML was served]', html.length > 0);
-        expect(html.length).toBeGreaterThan(100);
-      }
-    }
+    expect(frame).toBeTruthy();
+
+    // Wait for React to render — no fallback, must succeed
+    await frame!.waitForSelector('h1', { timeout: 15000 });
+    const h1Text = await frame!.locator('h1').first().textContent();
+    console.log('[Initial H1]', h1Text);
+    expect(h1Text).toBeTruthy();
   });
 
   test('should handle client-side navigation WITHOUT full reload', async ({ page }) => {
@@ -267,10 +258,8 @@ test.describe('Next.js Demo with Service Worker', () => {
     });
 
     console.log('[API Result]', result);
-    // API routes should at least return a JSON response (200 or 500)
+    expect(result.status).toBe(200);
     expect(result.contentType).toContain('json');
-    // The simplified API handler implementation may return different statuses
-    expect([200, 500]).toContain(result.status);
   });
 
   test('should serve static files from public directory', async ({ page }) => {
@@ -398,8 +387,7 @@ test.describe('Next.js Demo with Service Worker', () => {
 
     if (!content.includes(originalText)) {
       console.log('[Content snippet]', content.substring(0, 500));
-      // Skip if text not found - file structure may differ
-      return;
+      throw new Error(`Expected editor to contain "${originalText}" but it was not found`);
     }
 
     const newContent = content.replace(originalText, newText);

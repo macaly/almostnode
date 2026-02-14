@@ -8,7 +8,7 @@ import { VirtualFS } from '../virtual-fs';
 import { Buffer } from '../shims/stream';
 import { simpleHash } from '../utils/hash';
 import { addReactRefresh as _addReactRefresh } from './code-transforms';
-import { ESBUILD_WASM_ESM_CDN, ESBUILD_WASM_BINARY_CDN, REACT_REFRESH_CDN } from '../config/cdn';
+import { ESBUILD_WASM_ESM_CDN, ESBUILD_WASM_BINARY_CDN, REACT_REFRESH_CDN, REACT_CDN, REACT_DOM_CDN } from '../config/cdn';
 
 // Check if we're in a real browser environment (not jsdom or Node.js)
 // jsdom has window but doesn't have ServiceWorker or SharedArrayBuffer
@@ -626,6 +626,26 @@ export default css;
   private serveHtmlWithHMR(filePath: string): ResponseData {
     try {
       let content = this.vfs.readFileSync(filePath, 'utf8');
+
+      // Inject a React import map if the HTML doesn't already have one.
+      // This lets seed HTML omit the esm.sh boilerplate — the platform provides it.
+      if (!content.includes('"importmap"')) {
+        const importMap = `<script type="importmap">
+{
+  "imports": {
+    "react": "${REACT_CDN}?dev",
+    "react/": "${REACT_CDN}&dev/",
+    "react-dom": "${REACT_DOM_CDN}?dev",
+    "react-dom/": "${REACT_DOM_CDN}&dev/"
+  }
+}
+</script>`;
+        if (content.includes('</head>')) {
+          content = content.replace('</head>', `${importMap}\n</head>`);
+        } else if (content.includes('<head>')) {
+          content = content.replace('<head>', `<head>\n${importMap}`);
+        }
+      }
 
       // Inject React Refresh preamble before any app module scripts.
       // Firefox requires all <script type="importmap"> to appear before any <script type="module">,

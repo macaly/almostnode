@@ -1970,8 +1970,8 @@ describe('App Router page props (searchParams and params)', () => {
       expect(response.statusCode).toBe(200);
       const html = response.body.toString();
 
-      // Should have extractRouteParams function
-      expect(html).toContain('extractRouteParams');
+      // Should have resolveRoute function for server-based route resolution
+      expect(html).toContain('resolveRoute');
     });
 
     it('should pass params as a Promise to page components', async () => {
@@ -3046,5 +3046,19 @@ describe('Optional catch-all routes [[...slug]]', () => {
     const info = JSON.parse(routeInfo.body.toString());
     expect(info.found).toBe(true);
     expect(info.params.slug).toEqual(['clothes', 'pants']);
+  });
+
+  describe('/_npm/ route', () => {
+    it('should return 404 for empty specifier', async () => {
+      const response = await server.handleRequest('GET', '/_npm/', {});
+      expect(response.statusCode).toBe(404);
+    });
+
+    it('should return 500 when package is not installed', async () => {
+      // In test env (no esbuild-wasm), bundleNpmModuleForBrowser will fail
+      const response = await server.handleRequest('GET', '/_npm/nonexistent-pkg', {});
+      expect(response.statusCode).toBe(500);
+      expect(response.body.toString()).toContain('nonexistent-pkg');
+    });
   });
 });

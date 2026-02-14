@@ -298,7 +298,8 @@ export async function executeApiHandler(
   req: MockRequest,
   res: MockResponse | StreamingMockResponse,
   env: Record<string, string> | undefined,
-  builtinModules: Record<string, unknown>
+  builtinModules: Record<string, unknown>,
+  vfsRequire?: (id: string) => unknown
 ): Promise<void> {
   try {
     const require = (id: string): unknown => {
@@ -306,6 +307,10 @@ export async function executeApiHandler(
       const modId = id.startsWith('node:') ? id.slice(5) : id;
       if (builtinModules[modId]) {
         return builtinModules[modId];
+      }
+      // Fall back to VFS-based require (npm packages from node_modules)
+      if (vfsRequire) {
+        return vfsRequire(modId);
       }
       throw new Error(`Module not found: ${id}`);
     };
@@ -340,12 +345,15 @@ export async function executeApiHandler(
     }
 
     // Call the handler - it may be async
-    const result = (handler as (req: unknown, res: unknown) => unknown)(req, res);
+    let result = (handler as (req: unknown, res: unknown) => unknown)(req, res);
 
     // If the handler returns a promise, wait for it
     if (result instanceof Promise) {
-      await result;
+      result = await result;
     }
+
+    // Return the handler's return value so callers can detect Response objects
+    return result;
   } catch (error) {
     console.error('[NextDevServer] API handler error:', error);
     throw error;

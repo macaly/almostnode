@@ -6,6 +6,19 @@
 import type { VirtualFS } from '../virtual-fs';
 import { ESBUILD_WASM_BINARY_CDN, ESBUILD_WASM_BROWSER_CDN } from '../config/cdn';
 
+/**
+ * Node.js built-in module names. Used by the VFS plugin to provide empty stubs
+ * for builtins that leak as transitive deps (e.g., `path` from `@vercel/oidc`).
+ */
+const NODE_BUILTINS = new Set([
+  'assert', 'buffer', 'child_process', 'cluster', 'crypto', 'dgram', 'dns',
+  'events', 'fs', 'http', 'http2', 'https', 'net', 'os', 'path', 'perf_hooks',
+  'querystring', 'readline', 'stream', 'string_decoder', 'timers', 'tls',
+  'url', 'util', 'v8', 'vm', 'worker_threads', 'zlib', 'async_hooks',
+  'inspector', 'module', 'process', 'console', 'constants', 'domain',
+  'punycode', 'sys', 'tty',
+]);
+
 // ============================================================================
 // Type Definitions
 // ============================================================================
@@ -85,6 +98,7 @@ export interface TransformResult {
 
 export interface BuildOptions {
   entryPoints?: string[];
+  stdin?: { contents: string; resolveDir?: string; loader?: 'js' | 'jsx' | 'ts' | 'tsx' | 'json' | 'css' };
   bundle?: boolean;
   outdir?: string;
   outfile?: string;
@@ -255,10 +269,13 @@ function resolveNodeModuleImport(
     : pathParts.slice(1).join('/');      // Everything after "pkg/"
 
   // Check if the package exists in VFS node_modules
-  const nodeModulesBase = '/project/node_modules/' + moduleName;
-
+  // Try /node_modules/ first (dev server), then /project/node_modules/ (convex)
+  let nodeModulesBase = '/node_modules/' + moduleName;
   if (!vfs.existsSync(nodeModulesBase)) {
-    return null;
+    nodeModulesBase = '/project/node_modules/' + moduleName;
+    if (!vfs.existsSync(nodeModulesBase)) {
+      return null;
+    }
   }
 
   // Read package.json to determine the entry point
@@ -539,15 +556,26 @@ function remapVFSPath(path: string): string {
 function findVFSFile(vfs: VirtualFS, originalPath: string, extensions: string[]): string | null {
   for (const ext of extensions) {
     const pathWithExt = originalPath + ext;
-    // First check original path
+    // First check original path — must be a file, not a directory
     if (vfs.existsSync(pathWithExt)) {
-      return pathWithExt;
+      try {
+        if (!vfs.statSync(pathWithExt).isDirectory()) {
+          return pathWithExt;
+        }
+      } catch {
+        return pathWithExt;
+      }
     }
     // Then try remapped path
     const remapped = remapVFSPath(pathWithExt);
     if (remapped !== pathWithExt && vfs.existsSync(remapped)) {
-      // Return original path (not remapped) to preserve esbuild output naming
-      return pathWithExt;
+      try {
+        if (!vfs.statSync(remapped).isDirectory()) {
+          return pathWithExt;
+        }
+      } catch {
+        return pathWithExt;
+      }
     }
   }
   return null;
@@ -569,7 +597,7 @@ function findVFSFile(vfs: VirtualFS, originalPath: string, extensions: string[])
  * 2. Relative paths (./file.ts, ../file.ts)
  * 3. Bare imports (convex/server, react)
  */
-function createVFSPlugin(): unknown {
+function createVFSPlugin(externals?: string[]): unknown {
   if (!globalVFS) {
     return null;
   }
@@ -584,6 +612,19 @@ function createVFSPlugin(): unknown {
         onLoad: (options: { filter: RegExp; namespace?: string }, callback: (args: { path: string }) => unknown) => void;
       };
 
+      // Helper: Normalize .mjs/.cjs paths to .js so esbuild auto-detects
+      // module format. Packages in VFS were ESM→CJS transformed during install
+      // but keep their original .mjs extension. esbuild forces ESM parsing for
+      // .mjs files even when content is CJS, breaking export detection.
+      // We store the real path in pluginData for onLoad to read from VFS.
+      function vfsResolved(foundPath: string) {
+        if (foundPath.endsWith('.mjs') || foundPath.endsWith('.cjs')) {
+          const jsPath = foundPath.slice(0, -4) + '.js';
+          return { path: jsPath, pluginData: { fromVFS: true, realPath: foundPath } };
+        }
+        return { path: foundPath, pluginData: { fromVFS: true } };
+      }
+
       // Resolve file paths - handles both imports and entry points
       b.onResolve({ filter: /.*/ }, (args: { path: string; importer: string }) => {
         const { path: importPath, importer } = args;
@@ -593,13 +634,13 @@ function createVFSPlugin(): unknown {
           return { external: true };
         }
 
-        const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '.json'];
+        const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json'];
 
         // Absolute paths - check if file exists in VFS (or remapped location)
         if (importPath.startsWith('/')) {
           const foundPath = findVFSFile(vfs, importPath, extensions);
           if (foundPath) {
-            return { path: foundPath, pluginData: { fromVFS: true } };
+            return vfsResolved(foundPath);
           }
           // File not found
           return { external: true };
@@ -609,6 +650,7 @@ function createVFSPlugin(): unknown {
         if (importPath.startsWith('.')) {
           let resolved = importPath;
           if (importer) {
+            // Use realPath from pluginData if the importer was remapped from .mjs/.cjs
             const importerDir = importer.substring(0, importer.lastIndexOf('/'));
             resolved = importerDir + '/' + importPath;
           }
@@ -627,7 +669,7 @@ function createVFSPlugin(): unknown {
           // Try to find the file with various extensions
           const foundPath = findVFSFile(vfs, resolved, extensions);
           if (foundPath) {
-            return { path: foundPath, pluginData: { fromVFS: true } };
+            return vfsResolved(foundPath);
           }
 
           // Try index files
@@ -635,7 +677,7 @@ function createVFSPlugin(): unknown {
             const indexPath = resolved + '/index' + ext;
             const foundIndex = findVFSFile(vfs, indexPath, ['']);
             if (foundIndex) {
-              return { path: foundIndex, pluginData: { fromVFS: true } };
+              return vfsResolved(foundIndex);
             }
           }
         }
@@ -643,40 +685,66 @@ function createVFSPlugin(): unknown {
         // Bare imports (no ./ or ../ or /) - resolve from node_modules in VFS
         // See resolveNodeModuleImport() JSDoc for why we resolve from VFS instead of
         // marking as external (browser bundling, VFS isolation, consistent builds)
+
+        // Check externals list first — packages like react must stay as ESM imports
+        if (externals && externals.some(ext => importPath === ext || importPath.startsWith(ext + '/'))) {
+          return { external: true };
+        }
+
         const resolution = resolveNodeModuleImport(vfs, importPath, extensions);
         if (resolution) {
+          // Apply .mjs/.cjs normalization for bare imports too
+          if (resolution.path && (resolution.path.endsWith('.mjs') || resolution.path.endsWith('.cjs'))) {
+            const jsPath = resolution.path.slice(0, -4) + '.js';
+            return { path: jsPath, pluginData: { ...resolution.pluginData, realPath: resolution.path } };
+          }
           return resolution;
+        }
+
+        // Node.js builtins that aren't in VFS node_modules should be
+        // stubbed as empty modules rather than externalized. When externalized,
+        // patchExternalRequires() converts them to bare ESM imports that the
+        // browser can't resolve. An empty stub is safe because these builtins
+        // are typically only used in server-only code paths (e.g., @vercel/oidc).
+        const bareModule = importPath.replace(/^node:/, '');
+        if (NODE_BUILTINS.has(bareModule)) {
+          return { path: `/__node_stub__/${bareModule}`, namespace: 'node-stub' };
         }
 
         // Could not resolve from node_modules, treat as external
         return { external: true };
       });
 
+      // Load empty stubs for Node.js builtins not available in VFS
+      b.onLoad({ filter: /.*/, namespace: 'node-stub' }, () => {
+        return { contents: 'module.exports = {};', loader: 'js' as const };
+      });
+
       // Load file contents from VFS
       // Apply path remapping when reading to find the actual file
-      b.onLoad({ filter: /^\/.*/ }, (args: { path: string; pluginData?: { fromVFS?: boolean } }) => {
+      b.onLoad({ filter: /^\/.*/ }, (args: { path: string; pluginData?: { fromVFS?: boolean; realPath?: string } }) => {
         // Only handle files that were resolved by our plugin
         if (!args.pluginData?.fromVFS) {
           return null; // Let other loaders handle it
         }
         try {
-          // Try original path first, then remapped path
+          // Use realPath if available (set when .mjs/.cjs was normalized to .js)
+          const vfsPath = args.pluginData.realPath || args.path;
           let contents: string;
-          const originalPath = args.path;
-          const remappedPath = remapVFSPath(originalPath);
+          const remappedPath = remapVFSPath(vfsPath);
 
-          if (vfs.existsSync(originalPath)) {
-            contents = vfs.readFileSync(originalPath, 'utf8');
-          } else if (remappedPath !== originalPath && vfs.existsSync(remappedPath)) {
+          if (vfs.existsSync(vfsPath)) {
+            contents = vfs.readFileSync(vfsPath, 'utf8');
+          } else if (remappedPath !== vfsPath && vfs.existsSync(remappedPath)) {
             contents = vfs.readFileSync(remappedPath, 'utf8');
           } else {
-            throw new Error(`File not found: ${originalPath} (tried ${remappedPath})`);
+            throw new Error(`File not found: ${vfsPath} (tried ${remappedPath})`);
           }
 
-          const ext = originalPath.substring(originalPath.lastIndexOf('.'));
+          const ext = args.path.substring(args.path.lastIndexOf('.'));
           let loader: 'ts' | 'tsx' | 'js' | 'jsx' | 'json' = 'ts';
           if (ext === '.tsx') loader = 'tsx';
-          else if (ext === '.js') loader = 'js';
+          else if (ext === '.js' || ext === '.mjs' || ext === '.cjs') loader = 'js';
           else if (ext === '.jsx') loader = 'jsx';
           else if (ext === '.json') loader = 'json';
 
@@ -706,7 +774,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
   }
 
   // Add VFS plugin if VFS is available
-  const vfsPlugin = createVFSPlugin();
+  const vfsPlugin = createVFSPlugin(options.external);
   const plugins = [...(options.plugins || [])];
   if (vfsPlugin) {
     plugins.unshift(vfsPlugin);

@@ -93,4 +93,41 @@ describe('redirectNpmImports', () => {
       expect(result).toBe(code);
     });
   });
+
+  describe('installedPackages (VFS-served via /_npm/)', () => {
+    const installed = new Set(['@ai-sdk/react', 'zod', 'ai']);
+
+    it('should redirect installed package to /_npm/', () => {
+      const code = `import { useChat } from '@ai-sdk/react';`;
+      const result = redirectNpmImports(code, undefined, undefined, undefined, installed);
+      expect(result).toContain('/_npm/@ai-sdk/react');
+      expect(result).not.toContain('esm.sh');
+    });
+
+    it('should redirect installed package subpath to /_npm/', () => {
+      const code = `import { z } from 'zod/v4';`;
+      const result = redirectNpmImports(code, undefined, undefined, undefined, installed);
+      expect(result).toContain('/_npm/zod/v4');
+    });
+
+    it('should still use explicit mapping for react (not /_npm/)', () => {
+      const withReact = new Set(['react', '@ai-sdk/react']);
+      const code = `import React from 'react';`;
+      const result = redirectNpmImports(code, undefined, undefined, undefined, withReact);
+      expect(result).toContain('esm.sh/react@');
+      expect(result).not.toContain('/_npm/react');
+    });
+
+    it('should fall through to esm.sh for non-installed packages', () => {
+      const code = `import _ from 'lodash';`;
+      const result = redirectNpmImports(code, undefined, undefined, undefined, installed);
+      expect(result).toContain('esm.sh/lodash');
+    });
+
+    it('should handle scoped package root import', () => {
+      const code = `import ai from 'ai';`;
+      const result = redirectNpmImports(code, undefined, undefined, undefined, installed);
+      expect(result).toContain('/_npm/ai');
+    });
+  });
 });

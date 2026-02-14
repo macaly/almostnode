@@ -496,6 +496,70 @@ h1 {
       expect(body).toContain('React Refresh initialized');
       expect(body).toContain('vite-hmr');
     });
+
+    it('should auto-inject React import map when HTML has none', async () => {
+      // HTML without any import map — ViteDevServer should inject one
+      vfs.writeFileSync(
+        '/index.html',
+        `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>No Import Map</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>`
+      );
+
+      const response = await server.handleRequest('GET', '/', {});
+      const body = response.body.toString();
+
+      // Should inject an import map with React CDN URLs
+      expect(body).toContain('"importmap"');
+      expect(body).toContain('esm.sh/react@');
+      expect(body).toContain('esm.sh/react-dom@');
+      // Import map must come before </head>
+      const importmapPos = body.indexOf('"importmap"');
+      const headClosePos = body.indexOf('</head>');
+      expect(importmapPos).toBeLessThan(headClosePos);
+    });
+
+    it('should NOT inject import map when HTML already has one', async () => {
+      vfs.writeFileSync(
+        '/index.html',
+        `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Has Import Map</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "my-lib": "/lib/my-lib.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>`
+      );
+
+      const response = await server.handleRequest('GET', '/', {});
+      const body = response.body.toString();
+
+      // Should NOT inject a second import map
+      const importmapCount = (body.match(/"importmap"/g) || []).length;
+      expect(importmapCount).toBe(1);
+      // Should keep the user's import map
+      expect(body).toContain('my-lib');
+      // Should NOT contain React CDN URLs
+      expect(body).not.toContain('esm.sh/react@');
+    });
   });
 
   describe('JSX/TS transformation', () => {

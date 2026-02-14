@@ -4,11 +4,10 @@
  */
 
 import { VirtualFS } from './virtual-fs';
-import { Runtime } from './runtime';
 import { NextDevServer } from './frameworks/next-dev-server';
 import { getServerBridge } from './server-bridge';
-import { Buffer } from './shims/stream';
 import { createAIChatbotProject } from './vercel-ai-sdk-demo';
+import { PackageManager } from './npm/index';
 
 // DOM elements
 const logsEl = document.getElementById('logs') as HTMLDivElement;
@@ -114,27 +113,30 @@ async function main() {
     createAIChatbotProject(vfs);
     log('Project files created', 'success');
 
-    setStatus('Initializing runtime...', 'loading');
-    log('Initializing runtime...');
-    const runtime = new Runtime(vfs, {
-      cwd: '/',
-      env: { NODE_ENV: 'development' },
-      onConsole: (method, args) => {
-        const msg = args.map(a => String(a)).join(' ');
-        if (method === 'error') log(msg, 'error');
-        else if (method === 'warn') log(msg, 'warn');
-        else log(msg);
-      },
-    });
+    // Install AI SDK packages via PackageManager
+    setStatus('Installing packages...', 'loading');
+    log('Installing npm packages...');
+    const pm = new PackageManager(vfs, { cwd: '/' });
+    const packages = ['zod', 'ai@5', '@ai-sdk/openai@2', '@ai-sdk/react@2'];
+    for (const pkg of packages) {
+      log(`Installing ${pkg}...`);
+      await pm.install(pkg, {
+        onProgress: (msg) => log(msg),
+        transform: true,
+      });
+    }
+    log('All packages installed', 'success');
 
     setStatus('Starting dev server...', 'loading');
     log('Starting Next.js dev server...');
 
     const port = 3003;
+    const corsProxy = new URLSearchParams(window.location.search).get('corsProxy') || undefined;
     devServer = new NextDevServer(vfs, {
       port,
       root: '/',
       preferAppRouter: true,
+      corsProxy,
     });
 
     const bridge = getServerBridge();
@@ -147,36 +149,7 @@ async function main() {
       log(`Service Worker warning: ${error}`, 'warn');
     }
 
-    // Create HTTP server wrapper
-    const httpServer = {
-      listening: true,
-      address: () => ({ port, address: '0.0.0.0', family: 'IPv4' }),
-      async handleRequest(
-        method: string,
-        url: string,
-        headers: Record<string, string>,
-        body?: string | Buffer
-      ) {
-        const bodyBuffer = body
-          ? typeof body === 'string' ? Buffer.from(body) : body
-          : undefined;
-        return devServer!.handleRequest(method, url, headers, bodyBuffer);
-      },
-      // Streaming request handler - forwards to devServer's streaming support
-      async handleStreamingRequest(
-        method: string,
-        url: string,
-        headers: Record<string, string>,
-        body: Buffer | undefined,
-        onStart: (statusCode: number, statusMessage: string, headers: Record<string, string>) => void,
-        onChunk: (chunk: string | Uint8Array) => void,
-        onEnd: () => void
-      ) {
-        return devServer!.handleStreamingRequest(method, url, headers, body, onStart, onChunk, onEnd);
-      },
-    };
-
-    bridge.registerServer(httpServer as any, port);
+    bridge.registerServer(devServer as any, port);
     devServer.start();
 
     serverUrl = bridge.getServerUrl(port) + '/';

@@ -90,6 +90,7 @@ export default defineConfig({
         'docs/api-reference': resolve(__dirname, 'docs/api-reference.html'),
         'docs/tutorial-editor': resolve(__dirname, 'docs/tutorial-editor.html'),
         'examples/editor-tutorial': resolve(__dirname, 'examples/editor-tutorial.html'),
+        'examples/agent-workbench': resolve(__dirname, 'examples/agent-workbench.html'),
       },
     },
     outDir: 'dist-site',

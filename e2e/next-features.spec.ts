@@ -12,7 +12,10 @@ import { test, expect } from '@playwright/test';
 const VIRTUAL_PREFIX = '/__virtual__/3002';
 
 test.describe('Next.js New Features E2E', () => {
+  let pageErrors: string[] = [];
+
   test.beforeEach(async ({ page }) => {
+    pageErrors = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
         console.log(`[Browser ERROR]`, msg.text());
@@ -21,6 +24,7 @@ test.describe('Next.js New Features E2E', () => {
 
     page.on('pageerror', (error) => {
       console.error('[Page Error]', error.message);
+      pageErrors.push(error.message);
     });
 
     // Navigate to test harness
@@ -369,19 +373,11 @@ test.describe('Next.js New Features E2E', () => {
       const iframe = page.locator('#preview-frame');
       const iframeHandle = await iframe.elementHandle();
       const frame = await iframeHandle?.contentFrame();
+      expect(frame).toBeTruthy();
 
-      if (frame) {
-        try {
-          await frame.waitForSelector('#__next', { timeout: 15000 });
-          const hasNext = await frame.locator('#__next').count();
-          console.log('[Iframe has #__next]', hasNext);
-          expect(hasNext).toBeGreaterThan(0);
-        } catch {
-          const html = await frame.content();
-          console.log('[Iframe fallback - HTML length]', html.length);
-          expect(html.length).toBeGreaterThan(100);
-        }
-      }
+      await frame!.waitForSelector('#__next', { timeout: 15000 });
+      const hasNext = await frame!.locator('#__next').count();
+      expect(hasNext).toBeGreaterThan(0);
     });
 
     test('should render home page heading in iframe', async ({ page }) => {
@@ -390,19 +386,12 @@ test.describe('Next.js New Features E2E', () => {
       const iframe = page.locator('#preview-frame');
       const iframeHandle = await iframe.elementHandle();
       const frame = await iframeHandle?.contentFrame();
+      expect(frame).toBeTruthy();
 
-      if (frame) {
-        try {
-          await frame.waitForSelector('#home-heading', { timeout: 15000 });
-          const headingText = await frame.locator('#home-heading').textContent();
-          console.log('[Home heading]', headingText);
-          expect(headingText).toContain('Features Test Home');
-        } catch {
-          const html = await frame.content();
-          console.log('[Fallback - checking HTML served]', html.length);
-          expect(html.length).toBeGreaterThan(100);
-        }
-      }
+      await frame!.waitForSelector('#home-heading', { timeout: 15000 });
+      const headingText = await frame!.locator('#home-heading').textContent();
+      console.log('[Home heading]', headingText);
+      expect(headingText).toContain('Features Test Home');
     });
 
     test('should render CSS module page with scoped classes in iframe', async ({ page }) => {
@@ -417,31 +406,23 @@ test.describe('Next.js New Features E2E', () => {
       const iframe = page.locator('#preview-frame');
       const iframeHandle = await iframe.elementHandle();
       const frame = await iframeHandle?.contentFrame();
+      expect(frame).toBeTruthy();
 
-      if (frame) {
-        try {
-          await frame.waitForSelector('#css-title', { timeout: 15000 });
-          const title = await frame.locator('#css-title').textContent();
-          console.log('[CSS Module iframe title]', title);
-          expect(title).toContain('CSS Modules Test');
+      await frame!.waitForSelector('#css-title', { timeout: 15000 });
+      const title = await frame!.locator('#css-title').textContent();
+      console.log('[CSS Module iframe title]', title);
+      expect(title).toContain('CSS Modules Test');
 
-          // Check that the className has scoped class name
-          const className = await frame.locator('#css-title').getAttribute('class');
-          console.log('[CSS Module className]', className);
-          expect(className).toMatch(/title_[a-z0-9]+/);
+      // Check that the className has scoped class name
+      const className = await frame!.locator('#css-title').getAttribute('class');
+      console.log('[CSS Module className]', className);
+      expect(className).toMatch(/title_[a-z0-9]+/);
 
-          // Check that the styles object is rendered
-          const classesJson = await frame.locator('#css-classes').textContent();
-          console.log('[CSS Module classes JSON]', classesJson);
-          expect(classesJson).toContain('title');
-          expect(classesJson).toContain('card');
-        } catch (e) {
-          console.log('[CSS Module iframe error]', e);
-          const html = await frame.content();
-          console.log('[CSS Module iframe HTML length]', html.length);
-          expect(html.length).toBeGreaterThan(100);
-        }
-      }
+      // Check that the styles object is rendered
+      const classesJson = await frame!.locator('#css-classes').textContent();
+      console.log('[CSS Module classes JSON]', classesJson);
+      expect(classesJson).toContain('title');
+      expect(classesJson).toContain('card');
     });
 
     test('should render route group page in iframe', async ({ page }) => {
@@ -456,21 +437,12 @@ test.describe('Next.js New Features E2E', () => {
       const iframe = page.locator('#preview-frame');
       const iframeHandle = await iframe.elementHandle();
       const frame = await iframeHandle?.contentFrame();
+      expect(frame).toBeTruthy();
 
-      if (frame) {
-        try {
-          await frame.waitForSelector('#about-heading', { timeout: 15000 });
-          const heading = await frame.locator('#about-heading').textContent();
-          console.log('[Route Group iframe heading]', heading);
-          expect(heading).toContain('About Page');
-        } catch (e) {
-          console.log('[Route Group iframe error]', e);
-          const html = await frame.content();
-          console.log('[Route Group iframe HTML length]', html.length);
-          // At minimum, HTML should be served
-          expect(html.length).toBeGreaterThan(100);
-        }
-      }
+      await frame!.waitForSelector('#about-heading', { timeout: 15000 });
+      const heading = await frame!.locator('#about-heading').textContent();
+      console.log('[Route Group iframe heading]', heading);
+      expect(heading).toContain('About Page');
     });
   });
 });

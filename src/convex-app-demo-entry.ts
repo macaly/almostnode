@@ -7,7 +7,6 @@ import { VirtualFS } from './virtual-fs';
 import { Runtime } from './runtime';
 import { NextDevServer } from './frameworks/next-dev-server';
 import { getServerBridge } from './server-bridge';
-import { Buffer } from './shims/stream';
 import { createConvexAppProject } from './convex-app-demo';
 import { PackageManager } from './npm/index';
 
@@ -1112,18 +1111,16 @@ async function main() {
     buildFileTree();
     log('File editor ready', 'success');
 
-    setStatus('Initializing runtime...', 'loading');
-    log('Initializing runtime...');
-    const runtime = new Runtime(vfs, {
-      cwd: '/',
-      env: { NODE_ENV: 'development' },
-      onConsole: (method, args) => {
-        const msg = args.map(a => String(a)).join(' ');
-        if (method === 'error') log(msg, 'error');
-        else if (method === 'warn') log(msg, 'warn');
-        else log(msg);
-      },
+    // Install convex at root so NextDevServer's getInstalledPackages() finds it
+    // (CLI install goes to /project/node_modules/ which the dev server doesn't see)
+    setStatus('Installing packages...', 'loading');
+    log('Installing convex package at root...');
+    const rootPm = new PackageManager(vfs, { cwd: '/' });
+    await rootPm.install('convex', {
+      onProgress: (msg) => log(msg),
+      transform: true,
     });
+    log('Convex package installed', 'success');
 
     setStatus('Starting dev server...', 'loading');
     log('Starting Next.js dev server...');
@@ -1134,7 +1131,6 @@ async function main() {
       root: '/',
       preferAppRouter: true,
     });
-    const server = devServer;
 
     const bridge = getServerBridge();
 
@@ -1146,25 +1142,8 @@ async function main() {
       log(`Service Worker warning: ${error}`, 'warn');
     }
 
-    // Create HTTP server wrapper
-    const httpServer = {
-      listening: true,
-      address: () => ({ port, address: '0.0.0.0', family: 'IPv4' }),
-      async handleRequest(
-        method: string,
-        url: string,
-        headers: Record<string, string>,
-        body?: string | Buffer
-      ) {
-        const bodyBuffer = body
-          ? typeof body === 'string' ? Buffer.from(body) : body
-          : undefined;
-        return server.handleRequest(method, url, headers, bodyBuffer);
-      },
-    };
-
-    bridge.registerServer(httpServer as any, port);
-    server.start();
+    bridge.registerServer(devServer as any, port);
+    devServer.start();
 
     serverUrl = bridge.getServerUrl(port) + '/';
     log(`Server running at: ${serverUrl}`, 'success');
