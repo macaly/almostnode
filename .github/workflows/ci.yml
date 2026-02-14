@@ -55,6 +55,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests
-        run: npx playwright test e2e/ --ignore-pattern='convex-deploy*'
+        run: npx playwright test e2e/
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
