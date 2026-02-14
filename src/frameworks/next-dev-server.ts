@@ -193,12 +193,6 @@ export class NextDevServer extends DevServer {
   /** Shared module cache for VFS-based require (persists across API requests) */
   private vfsModuleCache: Record<string, VfsModule> = {};
 
-  /** Set an environment variable available to API route handlers */
-  setEnv(key: string, value: string): void {
-    if (!this.options.env) this.options.env = {};
-    this.options.env[key] = value;
-  }
-
   /**
    * Create a VFS-based require function for API route handlers.
    * Resolves npm packages from /node_modules/ in VFS.

@@ -300,7 +300,7 @@ export async function executeApiHandler(
   env: Record<string, string> | undefined,
   builtinModules: Record<string, unknown>,
   vfsRequire?: (id: string) => unknown
-): Promise<void> {
+): Promise<unknown> {
   try {
     const require = (id: string): unknown => {
       // Handle node: prefix

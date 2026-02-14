@@ -49,7 +49,7 @@ function createProjectModule(vfs: VirtualFS) {
         const timeout = setTimeout(() => {
           resolve('Error: Command timed out (10s)');
         }, 10000);
-        cpExec(command, { cwd: '/' }, (error: Error | null, stdout: string, stderr: string) => {
+        cpExec(command, { cwd: '/' }, (error, stdout, stderr) => {
           clearTimeout(timeout);
           if (error) {
             resolve(stderr ? `Error: ${stderr}` : `Error: ${error.message}`);
