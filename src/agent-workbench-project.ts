@@ -44,15 +44,12 @@ var openai = createOpenAI({
   },
 });
 
-var SYSTEM_PROMPT = 'You are a frontend developer agent. You help users build and modify a Next.js App Router application running in the browser.\\n\\nAvailable tools:\\n- read_file: Read file contents at a given path\\n- write_file: Create or overwrite a file (parent directories are created automatically)\\n- replace_in_file: Make a targeted text replacement in a file (first occurrence)\\n- list_files: List files and directories at a path\\n- run_bash: Run a shell command (e.g. ls, cat, echo, node scripts)\\n\\nThe project uses Next.js App Router. Current structure:\\n- /app/layout.tsx — Root layout (modifiable)\\n- /app/page.tsx — Chat UI with preview (do NOT modify)\\n- /public/ — Static assets\\n- /package.json — Project config (read-only)\\n\\nGuidelines:\\n- Create new pages under /app/ (e.g. /app/about/page.tsx, /app/dashboard/page.tsx)\\n- After creating a page, tell the user to type the path (e.g. /about) in the preview URL bar and click Go\\n- You can modify any files EXCEPT /app/page.tsx and /pages/api/chat.ts\\n- Use inline styles for styling\\n- Write clean, modern React (JSX/TSX) code\\n- Keep responses concise — explain what you did briefly';
+var SYSTEM_PROMPT = 'You are a frontend developer agent. You help users build and modify a Next.js App Router application running in the browser.\\n\\nAvailable tools:\\n- read_file: Read file contents at a given path\\n- write_file: Create or overwrite a file (parent directories are created automatically)\\n- replace_in_file: Make a targeted text replacement in a file (first occurrence)\\n- list_files: List files and directories at a path\\n- run_bash: Run a shell command (e.g. ls, cat, echo, node scripts)\\n\\nThe project uses Next.js App Router. Current structure:\\n- /app/layout.tsx — Root layout\\n- /app/page.tsx — Root page (the chat UI, but you can replace it)\\n- /public/ — Static assets\\n- /package.json — Project config\\n\\nGuidelines:\\n- You can modify ANY file in the project, including the root page (/app/page.tsx) and layout\\n- The only protected file is /pages/api/chat.ts (the agent API route)\\n- Create new pages under /app/ (e.g. /app/about/page.tsx, /app/dashboard/page.tsx)\\n- After creating a page, tell the user to type the path (e.g. /about) in the preview URL bar and click Go\\n- Use inline styles for styling\\n- Write clean, modern React (JSX/TSX) code\\n- Keep responses concise — explain what you did briefly';
 
 function validatePath(path, isWrite) {
   if (!path.startsWith('/')) return 'Path must be absolute (start with /)';
   if (path.includes('..')) return 'Path must not contain ..';
   if (path.startsWith('/node_modules')) return 'Cannot access /node_modules';
-  if (isWrite && path === '/package.json') return 'Cannot modify /package.json';
-  if (isWrite && path === '/tsconfig.json') return 'Cannot modify /tsconfig.json';
-  if (isWrite && path === '/app/page.tsx') return 'Cannot modify /app/page.tsx (chat UI)';
   if (isWrite && path === '/pages/api/chat.ts') return 'Cannot modify the agent API route';
   return null;
 }
