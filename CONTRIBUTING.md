@@ -56,20 +56,19 @@ almostnode/
 │   ├── runtime.ts              # Core runtime
 │   ├── virtual-fs.ts           # Virtual filesystem
 │   ├── create-runtime.ts       # Runtime factory
-│   ├── shims/                  # Node.js API shims
-│   │   ├── fs.ts
-│   │   ├── path.ts
-│   │   ├── http.ts
+│   ├── index.ts                # Main exports
+│   ├── shims/                  # Node.js API shims (fs, path, http, etc.)
+│   ├── frameworks/             # Framework integrations (flat structure)
+│   │   ├── vite-dev-server.ts
+│   │   ├── next-dev-server.ts
 │   │   └── ...
-│   ├── frameworks/             # Framework integrations
-│   │   ├── vite/
-│   │   └── next/
 │   ├── npm/                    # npm package manager
-│   └── worker/                 # Web Worker support
+│   ├── worker/                 # Web Worker support
+│   ├── types/                  # TypeScript types
+│   └── utils/                  # Utility functions
 ├── tests/                      # Unit tests
 ├── e2e/                        # End-to-end tests
-├── examples/                   # Demo applications
-└── docs/                       # Documentation
+└── examples/                   # Demo applications
 ```
 
 ## Development Workflow
@@ -95,6 +94,9 @@ git checkout -b fix/issue-description
 # Unit tests
 npm test
 
+# Run tests once (no watch mode)
+npm run test:run
+
 # E2E tests (requires Playwright)
 npm run test:e2e
 
@@ -105,7 +107,11 @@ npm run type-check
 ### 4. Build the project
 
 ```bash
-npm run build:lib
+# Build library for distribution
+npm run build
+
+# Or build with types
+npm run build:publish
 ```
 
 ### 5. Test with examples
@@ -119,19 +125,12 @@ npm run dev
 
 ```bash
 git add .
-git commit -m "feat: add support for X"
+git commit -m "Add support for X"
 # or
-git commit -m "fix: resolve issue with Y"
+git commit -m "Fix issue with Y"
 ```
 
-Use conventional commit format:
-- `feat:` - New features
-- `fix:` - Bug fixes
-- `docs:` - Documentation changes
-- `test:` - Adding tests
-- `refactor:` - Code refactoring
-- `perf:` - Performance improvements
-- `chore:` - Maintenance tasks
+Write clear, descriptive commit messages that explain what changed and why.
 
 ### 7. Push and create a Pull Request
 
@@ -146,14 +145,22 @@ Then open a PR on GitHub with:
 
 ## Common Tasks
 
+### Core Principle: Fix the Platform, Not the Package
+
+**The most important rule when contributing:** When a package doesn't work, the fix goes into the generic shims (fs, path, http, etc.), not into package-specific adapters.
+
+Never write library-specific shim code. If a package fails because it needs `fs.readFileSync`, add or improve `fs.readFileSync` in `src/shims/fs.ts`. Don't create a special adapter for that package.
+
+This keeps almostnode maintainable and ensures fixes benefit all packages, not just one.
+
 ### Adding a New Node.js API Shim
 
-1. **Create the shim file** in `src/shims/`
+1. **Create or update the shim file** in `src/shims/`
 
 ```typescript
 // src/shims/my-module.ts
 export function myFunction() {
-  // Implementation
+  // Implementation that works in the browser
 }
 ```
 
@@ -168,12 +175,14 @@ this.builtinModules.set('my-module', () => require('./shims/my-module'));
 ```typescript
 // tests/my-module.test.ts
 import { describe, it, expect } from 'vitest';
-import { createContainer } from '../src';
+import { createRuntime } from '../src';
+import { VirtualFS } from '../src/virtual-fs';
 
 describe('my-module', () => {
-  it('should work', () => {
-    const container = createContainer();
-    const result = container.execute(`
+  it('should work', async () => {
+    const vfs = new VirtualFS();
+    const runtime = await createRuntime(vfs);
+    const result = await runtime.execute(`
       const mod = require('my-module');
       module.exports = mod.myFunction();
     `);
@@ -182,7 +191,11 @@ describe('my-module', () => {
 });
 ```
 
-4. **Update documentation** in README.md
+4. **Export from index.ts** if it's a public API
+
+```typescript
+export * as myModule from './shims/my-module';
+```
 
 ### Fixing a Bug
 
@@ -218,20 +231,19 @@ npm run test:e2e
 
 ### Before Submitting
 
-- [ ] Code builds without errors (`npm run build:lib`)
-- [ ] All tests pass (`npm test`)
+- [ ] Code builds without errors (`npm run build`)
+- [ ] All tests pass (`npm run test:run`)
 - [ ] Type checking passes (`npm run type-check`)
 - [ ] Documentation is updated if needed
-- [ ] Commit messages follow conventional format
 - [ ] PR description explains what and why
 
 ### PR Title Format
 
-Use conventional commit format:
+Write clear, descriptive titles:
 ```
-feat(runtime): add support for worker_threads
-fix(vfs): resolve path resolution issue
-docs: improve sandbox setup guide
+Add support for worker_threads module
+Fix path resolution issue in virtual filesystem
+Improve sandbox setup documentation
 ```
 
 ### Review Process

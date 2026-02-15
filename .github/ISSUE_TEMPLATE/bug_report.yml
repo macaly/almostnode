@@ -138,10 +138,12 @@ body:
       description: Provide the smallest code snippet that reproduces the issue
       render: typescript
       placeholder: |
-        import { createContainer } from 'almostnode';
+        import { createRuntime } from 'almostnode';
+        import { VirtualFS } from 'almostnode';
         
-        const container = createContainer();
-        const result = container.execute(`
+        const vfs = new VirtualFS();
+        const runtime = await createRuntime(vfs);
+        const result = await runtime.execute(`
           const fs = require('fs');
           // Bug happens here
         `);
