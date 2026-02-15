@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or Discussion
+    url: https://github.com/macaly/almostnode/discussions
+    about: Ask questions or discuss ideas with the community
+  - name: Documentation
+    url: https://github.com/macaly/almostnode#readme
+    about: Check the documentation for usage guides and examples
+  - name: Macaly Support
+    url: https://macaly.com
+    about: Visit Macaly.com for more information
