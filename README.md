@@ -353,6 +353,44 @@ await bridge.initServiceWorker({ swUrl: '/api/__sw__' });
 |--------|-------------|
 | `getServiceWorkerContent()` | Returns the service worker file content as a string |
 | `getServiceWorkerPath()` | Returns the absolute path to the service worker file |
+| `getWorkerContent()` | Returns the runtime Web Worker script as a string (for Turbopack/Webpack) |
+| `getWorkerPath()` | Returns the absolute path to the runtime Web Worker script |
+
+#### Using `WorkerRuntime` with Turbopack or Webpack
+
+If you use `useWorker: true` with `createRuntime()`, almostnode defaults to resolving the
+worker script via `new URL(..., import.meta.url)`. **Turbopack and Webpack statically
+analyze this pattern at build time** and fail when the path is a server-relative
+`/assets/...` URL from the almostnode dist.
+
+To fix this, serve the worker file from a Next.js API route and pass its URL as `workerUrl`:
+
+```typescript
+// app/api/almostnode-worker/route.ts
+import { getWorkerContent } from 'almostnode/next';
+
+export async function GET() {
+  return new Response(getWorkerContent(), {
+    headers: {
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'no-cache',
+    },
+  });
+}
+```
+
+Then pass `workerUrl` when creating the runtime:
+
+```typescript
+// In your client component
+import { createRuntime } from 'almostnode';
+
+const runtime = await createRuntime(vfs, {
+  dangerouslyAllowSameOrigin: true,
+  useWorker: true,
+  workerUrl: '/api/almostnode-worker',
+});
+```
 
 ---
 

@@ -1,24 +1,30 @@
-import { defineConfig } from 'vite';
-import { resolve } from 'path';
-import wasm from 'vite-plugin-wasm';
-
+import { defineConfig } from "vite";
+import { resolve } from "path";
+import wasm from "vite-plugin-wasm";
 
 export default defineConfig({
   plugins: [
     wasm(),
     {
-      name: 'browser-shims',
-      enforce: 'pre',
+      name: "browser-shims",
+      enforce: "pre",
       resolveId(source) {
-        if (source === 'node:zlib' || source === 'zlib') {
-          return resolve(__dirname, 'src/shims/zlib.ts');
+        if (source === "node:zlib" || source === "zlib") {
+          return resolve(__dirname, "src/shims/zlib.ts");
         }
-        if (source === 'brotli-wasm/pkg.web/brotli_wasm.js') {
-          return resolve(__dirname, 'node_modules/brotli-wasm/pkg.web/brotli_wasm.js');
+        if (source === "brotli-wasm/pkg.web/brotli_wasm.js") {
+          return resolve(
+            __dirname,
+            "node_modules/brotli-wasm/pkg.web/brotli_wasm.js",
+          );
         }
-        if (source === 'brotli-wasm/pkg.web/brotli_wasm_bg.wasm?url') {
+        if (source === "brotli-wasm/pkg.web/brotli_wasm_bg.wasm?url") {
           return {
-            id: resolve(__dirname, 'node_modules/brotli-wasm/pkg.web/brotli_wasm_bg.wasm') + '?url',
+            id:
+              resolve(
+                __dirname,
+                "node_modules/brotli-wasm/pkg.web/brotli_wasm_bg.wasm",
+              ) + "?url",
             external: false,
           };
         }
@@ -27,65 +33,67 @@ export default defineConfig({
     },
   ],
   define: {
-    'process.env': {},
-    global: 'globalThis',
+    "process.env": {},
+    global: "globalThis",
   },
   resolve: {
     alias: {
-      'node:zlib': resolve(__dirname, 'src/shims/zlib.ts'),
-      'zlib': resolve(__dirname, 'src/shims/zlib.ts'),
-      'buffer': 'buffer',
-      'process': 'process/browser',
+      "node:zlib": resolve(__dirname, "src/shims/zlib.ts"),
+      zlib: resolve(__dirname, "src/shims/zlib.ts"),
+      buffer: "buffer",
+      process: "process/browser",
     },
   },
   worker: {
-    format: 'es',
-    plugins: () => [
-      wasm(),
-    ],
+    format: "es",
+    plugins: () => [wasm()],
     rollupOptions: {
       output: {
         inlineDynamicImports: true,
+        entryFileNames: "[name].js",
+        chunkFileNames: "[name].js",
+        assetFileNames: "[name][extname]",
       },
     },
   },
   build: {
     lib: {
       entry: {
-        index: resolve(__dirname, 'src/index.ts'),
-        'vite-plugin': resolve(__dirname, 'src/vite-plugin.ts'),
-        'next-plugin': resolve(__dirname, 'src/next-plugin.ts'),
+        index: resolve(__dirname, "src/index.ts"),
+        "vite-plugin": resolve(__dirname, "src/vite-plugin.ts"),
+        "next-plugin": resolve(__dirname, "src/next-plugin.ts"),
       },
-      name: 'JustNode',
-      formats: ['es', 'cjs'],
-      fileName: (format, entryName) => `${entryName}.${format === 'es' ? 'mjs' : 'cjs'}`,
+      name: "JustNode",
+      formats: ["es", "cjs"],
+      fileName: (format, entryName) =>
+        `${entryName}.${format === "es" ? "mjs" : "cjs"}`,
     },
     rollupOptions: {
       external: [
-        'brotli-wasm',
-        'pako',
-        'comlink',
-        'just-bash',
-        'resolve.exports',
-        'brotli',
+        "brotli-wasm",
+        "pako",
+        "comlink",
+        "just-bash",
+        "resolve.exports",
+        "brotli",
         // Node.js built-ins for vite-plugin
-        'fs',
-        'path',
-        'url',
-        'vite',
+        "fs",
+        "path",
+        "url",
+        "vite",
       ],
       output: {
         globals: {
-          'brotli-wasm': 'brotliWasm',
-          'pako': 'pako',
-          'comlink': 'Comlink',
-          'just-bash': 'justBash',
-          'resolve.exports': 'resolveExports',
+          "brotli-wasm": "brotliWasm",
+          pako: "pako",
+          comlink: "Comlink",
+          "just-bash": "justBash",
+          "resolve.exports": "resolveExports",
         },
       },
     },
     sourcemap: true,
     minify: false,
   },
-  assetsInclude: ['**/*.wasm'],
+  assetsInclude: ["**/*.wasm"],
 });

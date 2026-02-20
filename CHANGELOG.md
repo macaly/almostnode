@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.15] - 2026-02-20
+
+### Added
+- **`workerUrl` option for `createRuntime()` and `WorkerRuntime`**: Pass a custom URL for the runtime Web Worker script. This is required when using almostnode with Turbopack or Webpack, which statically resolve `new URL(..., import.meta.url)` at build time and fail on server-relative asset paths from the almostnode dist. When `workerUrl` is omitted, the existing Vite-compatible behavior is preserved.
+- **`getWorkerContent()` and `getWorkerPath()` in `almostnode/next`**: Helpers to read the built runtime worker script from the almostnode package, analogous to the existing `getServiceWorkerContent()` / `getServiceWorkerPath()`. Use these to serve the worker from a Next.js API route and pass the route URL as `workerUrl`.
+- **Stable worker filename**: The runtime worker is now built as `dist/assets/runtime-worker.js` (no content hash) so it can be located and served reliably by consuming projects.
+
+### Changed
+- Worker build output now uses stable filenames (`entryFileNames: '[name].js'`) instead of hashed names, making the file locatable without a glob.
+
 ## [0.2.14] - 2026-02-14
 
 ### Added

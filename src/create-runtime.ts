@@ -84,7 +84,7 @@ export async function createRuntime(
   vfs: VirtualFS,
   options: CreateRuntimeOptions = {}
 ): Promise<IRuntime> {
-  const { sandbox, dangerouslyAllowSameOrigin, useWorker = false, ...runtimeOptions } = options;
+  const { sandbox, dangerouslyAllowSameOrigin, useWorker = false, workerUrl, ...runtimeOptions } = options;
 
   // SECURE: Cross-origin sandbox mode
   if (sandbox) {
@@ -124,7 +124,7 @@ export async function createRuntime(
 
   if (shouldUseWorker) {
     console.log('[createRuntime] Creating WorkerRuntime (same-origin, thread-isolated)');
-    const workerRuntime = new WorkerRuntime(vfs, runtimeOptions);
+    const workerRuntime = new WorkerRuntime(vfs, { ...runtimeOptions, workerUrl });
     // Wait for worker to be ready by executing a simple command
     await workerRuntime.execute('/* worker ready check */', '/__worker_init__.js');
     return workerRuntime;

@@ -87,6 +87,36 @@ export interface CreateRuntimeOptions extends IRuntimeOptions {
    * They still have access to IndexedDB and can make network requests.
    */
   useWorker?: boolean | 'auto';
+
+  /**
+   * URL of the pre-built almostnode runtime worker script.
+   *
+   * By default, WorkerRuntime uses `new URL('./worker/runtime-worker.ts', import.meta.url)`
+   * which Vite resolves at build time. This works fine with Vite, but breaks with Turbopack
+   * and Webpack because they try to statically resolve the asset path at build time and fail
+   * when the path is a server-relative `/assets/...` URL from the almostnode dist.
+   *
+   * To fix this, serve the worker file yourself and pass its URL here:
+   *
+   * @example Next.js (App Router)
+   * ```typescript
+   * // app/api/almostnode-worker/route.ts
+   * import { getWorkerContent } from 'almostnode/next';
+   * export async function GET() {
+   *   return new Response(getWorkerContent(), {
+   *     headers: { 'Content-Type': 'application/javascript' },
+   *   });
+   * }
+   *
+   * // In your component:
+   * const runtime = await createRuntime(vfs, {
+   *   dangerouslyAllowSameOrigin: true,
+   *   useWorker: true,
+   *   workerUrl: '/api/almostnode-worker',
+   * });
+   * ```
+   */
+  workerUrl?: string | URL;
 }
 
 /**
