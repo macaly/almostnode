@@ -9,6 +9,17 @@ import { wrap, proxy, Remote } from 'comlink';
 import type { VirtualFS } from './virtual-fs';
 import type { IRuntime, IExecuteResult, IRuntimeOptions, VFSSnapshot } from './runtime-interface';
 
+export interface WorkerRuntimeOptions extends IRuntimeOptions {
+  /**
+   * URL of the pre-built runtime worker script.
+   * When omitted, uses Vite's `new URL(...)` worker syntax (works with Vite only).
+   * Set this when using Turbopack, Webpack, or any bundler that statically
+   * resolves `new URL(..., import.meta.url)` at build time.
+   * See `getWorkerContent()` in `almostnode/next` for how to serve this file.
+   */
+  workerUrl?: string | URL;
+}
+
 /**
  * Type for the worker API
  */
@@ -29,21 +40,28 @@ export class WorkerRuntime implements IRuntime {
   private worker: Worker;
   private workerApi: Remote<WorkerApi>;
   private vfs: VirtualFS;
-  private options: IRuntimeOptions;
+  private options: WorkerRuntimeOptions;
   private initialized: Promise<void>;
   private changeListener: ((path: string, content: string) => void) | null = null;
   private deleteListener: ((path: string) => void) | null = null;
 
-  constructor(vfs: VirtualFS, options: IRuntimeOptions = {}) {
+  constructor(vfs: VirtualFS, options: WorkerRuntimeOptions = {}) {
     this.vfs = vfs;
     this.options = options;
 
-    // Create the worker
-    // Using Vite's worker import syntax
-    this.worker = new Worker(
-      new URL('./worker/runtime-worker.ts', import.meta.url),
-      { type: 'module' }
-    );
+    // Create the worker.
+    // If a workerUrl is provided, use it directly. This is required for bundlers
+    // that statically resolve `new URL(..., import.meta.url)` at build time
+    // (Turbopack, Webpack) and fail when the path is a server-relative asset URL.
+    // When no workerUrl is given, fall back to Vite's worker import syntax.
+    if (options.workerUrl) {
+      this.worker = new Worker(options.workerUrl, { type: 'module' });
+    } else {
+      this.worker = new Worker(
+        new URL('./worker/runtime-worker.ts', import.meta.url),
+        { type: 'module' }
+      );
+    }
 
     // Wrap with Comlink
     this.workerApi = wrap<WorkerApi>(this.worker);

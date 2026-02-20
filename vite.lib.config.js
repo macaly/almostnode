@@ -46,6 +46,11 @@ export default defineConfig({
     rollupOptions: {
       output: {
         inlineDynamicImports: true,
+        // Stable filename (no hash) so next-plugin.ts can locate the worker
+        // without a glob and consumers can serve it from a predictable path.
+        entryFileNames: '[name].js',
+        chunkFileNames: '[name].js',
+        assetFileNames: '[name][extname]',
       },
     },
   },

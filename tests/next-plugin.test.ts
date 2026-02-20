@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getServiceWorkerContent, getServiceWorkerPath } from '../src/next-plugin';
+import { getServiceWorkerContent, getServiceWorkerPath, getWorkerContent, getWorkerPath } from '../src/next-plugin';
 import * as fs from 'fs';
 
 describe('next-plugin', () => {
@@ -33,6 +33,34 @@ describe('next-plugin', () => {
       const content = getServiceWorkerContent();
       const swPath = getServiceWorkerPath();
       const fileContent = fs.readFileSync(swPath, 'utf-8');
+      expect(content).toBe(fileContent);
+    });
+  });
+
+  describe('getWorkerPath', () => {
+    it('should return a valid file path', () => {
+      const workerPath = getWorkerPath();
+      expect(typeof workerPath).toBe('string');
+      expect(workerPath).toContain('runtime-worker.js');
+    });
+
+    it('should return a path that exists', () => {
+      const workerPath = getWorkerPath();
+      expect(fs.existsSync(workerPath)).toBe(true);
+    });
+  });
+
+  describe('getWorkerContent', () => {
+    it('should return worker content as a string', () => {
+      const content = getWorkerContent();
+      expect(typeof content).toBe('string');
+      expect(content.length).toBeGreaterThan(0);
+    });
+
+    it('should match the file content from getWorkerPath', () => {
+      const content = getWorkerContent();
+      const workerPath = getWorkerPath();
+      const fileContent = fs.readFileSync(workerPath, 'utf-8');
       expect(content).toBe(fileContent);
     });
   });

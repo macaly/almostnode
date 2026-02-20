@@ -93,4 +93,65 @@ export function getServiceWorkerPath(): string {
   return swFilePath;
 }
 
-export default { getServiceWorkerContent, getServiceWorkerPath };
+/**
+ * Get the path to the almostnode runtime worker script.
+ *
+ * The runtime worker is a Web Worker used by `WorkerRuntime` to execute Node.js
+ * code off the main thread. By default, `WorkerRuntime` resolves the worker via
+ * `new URL(..., import.meta.url)`, which Vite handles correctly but Turbopack
+ * and Webpack cannot — they try to statically resolve the asset at build time
+ * and fail when the path is a server-relative `/assets/...` URL.
+ *
+ * To fix this, serve the worker file yourself and pass its URL as `workerUrl`
+ * to `createRuntime()` or `new WorkerRuntime()`.
+ *
+ * @example Next.js (App Router) — serve the worker from an API route
+ * ```typescript
+ * // app/api/almostnode-worker/route.ts
+ * import { getWorkerContent } from 'almostnode/next';
+ *
+ * export async function GET() {
+ *   return new Response(getWorkerContent(), {
+ *     headers: {
+ *       'Content-Type': 'application/javascript',
+ *       'Cache-Control': 'no-cache',
+ *     },
+ *   });
+ * }
+ *
+ * // In your client component:
+ * const runtime = await createRuntime(vfs, {
+ *   dangerouslyAllowSameOrigin: true,
+ *   useWorker: true,
+ *   workerUrl: '/api/almostnode-worker',
+ * });
+ * ```
+ */
+export function getWorkerPath(): string {
+  // The worker file is built to dist/assets/runtime-worker.js (stable name, no hash)
+  let workerFilePath = path.join(__dirname, 'assets', 'runtime-worker.js');
+
+  if (!fs.existsSync(workerFilePath)) {
+    workerFilePath = path.join(__dirname, '../dist/assets/runtime-worker.js');
+  }
+
+  if (!fs.existsSync(workerFilePath)) {
+    throw new Error(
+      'almostnode runtime worker file not found. Make sure almostnode is built (`npm run build:lib`).'
+    );
+  }
+
+  return workerFilePath;
+}
+
+/**
+ * Get the contents of the almostnode runtime worker script as a string.
+ * Use this in a Next.js API route to serve the worker to the browser.
+ *
+ * @see {@link getWorkerPath} for usage examples.
+ */
+export function getWorkerContent(): string {
+  return fs.readFileSync(getWorkerPath(), 'utf-8');
+}
+
+export default { getServiceWorkerContent, getServiceWorkerPath, getWorkerContent, getWorkerPath };
